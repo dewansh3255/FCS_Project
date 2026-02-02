@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # 1. Database (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=fcs_project
+      - POSTGRES_USER=fcs_user
+      - POSTGRES_PASSWORD=fcs_password
+    ports:
+      # CHANGED: Mapped host port to 5433 to avoid conflict with local Postgres
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fcs_user -d fcs_project"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Caching (Redis)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # 3. Backend (Django)
+  backend:
+    build: ./backend
+    # Command: Wait for DB -> Migrate -> Start Server
+    command: >
+      sh -c "while ! nc -z db 5432; do sleep 1; done;
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - DB_HOST=db
+      - DB_NAME=fcs_project
+      - DB_USER=fcs_user
+      - DB_PASS=fcs_password
+      - REDIS_HOST=redis
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - SECRET_KEY=dev_secret_key_change_in_prod
+      - DEBUG=True
+
+  # 4. Frontend (React + Vite)
+  frontend:
+    build: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    command: npm run dev -- --host
+
+volumes:
+  postgres_data:

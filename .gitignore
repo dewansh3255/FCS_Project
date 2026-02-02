@@ -1,0 +1,21 @@
+# Docker
+
+pycache/
+*.py[cod]
+*$py.class
+node_modules/
+dist/
+.env
+venv/
+.DS_Store
+.vscode/
+.idea/
+
+# Database
+
+db.sqlite3
+*.log
+
+# Docker volumes if explicit
+
+postgres_data/
