@@ -7,3 +7,5 @@ django-redis
 redis
 python-dotenv
 cryptography
+django-otp
+qrcode
