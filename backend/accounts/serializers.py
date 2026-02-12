@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from .models import UserKeys
 
 User = get_user_model()
 
@@ -15,7 +16,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            role=validated_data.get('role', User.Roles.CANDIDATE),
+            role=validated_data.get('role', 'CANDIDATE'),
             phone_number=validated_data.get('phone_number')
         )
         return user
+
+class UserKeysSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserKeys
+        fields = ['public_key', 'encrypted_private_key']
