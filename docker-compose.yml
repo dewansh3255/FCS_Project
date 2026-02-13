@@ -64,5 +64,17 @@ services:
       - CHOKIDAR_USEPOLLING=true
     command: npm run dev -- --host
 
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+      - frontend
+
 volumes:
   postgres_data:
