@@ -48,7 +48,7 @@ services:
       - DB_USER=fcs_user
       - DB_PASS=fcs_password
       - REDIS_HOST=redis
-      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - ALLOWED_HOSTS=*
       - SECRET_KEY=dev_secret_key_change_in_prod
       - DEBUG=True
 

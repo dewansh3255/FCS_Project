@@ -1,6 +1,6 @@
 // src/services/api.ts
 
-const API_BASE_URL = "/api"; // Base URL for Django API
+const API_BASE_URL = ""; // Base URL for Django API
 
 export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string) => {
   try {
