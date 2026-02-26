@@ -10,6 +10,7 @@ export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string)
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",
       body: JSON.stringify({
         public_key: publicKey,
         encrypted_private_key: encryptedPrivateKey,
@@ -29,6 +30,76 @@ export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string)
       throw new Error(errorData.detail || "Failed to upload keys");
     }
 
+    return await response.json();
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
+};
+
+export const registerUser = async (userData: any) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.username?.[0] || errorData.email?.[0] || "Registration failed");
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Register Error:", error);
+    throw error;
+  }
+};
+
+export const loginUser = async (credentials: any) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Login failed");
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Login Error:", error);
+    throw error;
+  }
+};
+
+// Also update getTOTPSetupURI to accept a userId:
+export const getTOTPSetupURI = async (userId: number) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/totp/generate/${userId}/`, {
+      method: "GET",
+    });
+    if (!response.ok) throw new Error("Failed to fetch TOTP URI");
+    return await response.json();
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
+};
+
+// Update verifyTOTPCode to accept userId and code:
+export const verifyTOTPCode = async (userId: number, code: string) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/totp/verify/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ user_id: userId, code }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Verification failed");
+    }
     return await response.json();
   } catch (error) {
     console.error("API Error:", error);

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import UserKeys
+from .models import Profile
 
 User = get_user_model()
 
@@ -25,3 +26,39 @@ class UserKeysSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserKeys
         fields = ['public_key', 'encrypted_private_key']
+
+class ProfileSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = Profile
+        fields = [
+            'username', 'headline', 'bio', 'location', 'skills',
+            'is_headline_public', 'is_bio_public', 'is_location_public', 'is_skills_public'
+        ]
+
+    def to_representation(self, instance):
+        # 1. Get the standard data dictionary
+        data = super().to_representation(instance)
+        
+        # 2. Find out who is asking for the profile
+        request = self.context.get('request')
+
+        # 3. If the user is looking at their OWN profile, show them everything
+        if request and request.user == instance.user:
+            return data
+
+        # 4. If someone else is looking, apply the privacy filters!
+        # (Note: In Week 4, Member A will add an "is_connected" check here)
+        is_connected = False # Defaulting to False until connections are built
+
+        if not instance.is_headline_public and not is_connected:
+            data.pop('headline', None)
+        if not instance.is_bio_public and not is_connected:
+            data.pop('bio', None)
+        if not instance.is_location_public and not is_connected:
+            data.pop('location', None)
+        if not instance.is_skills_public and not is_connected:
+            data.pop('skills', None)
+
+        return data
