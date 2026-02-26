@@ -9,3 +9,4 @@ python-dotenv
 cryptography
 django-otp
 qrcode
+pyotp==2.9.0

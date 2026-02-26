@@ -96,13 +96,13 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # USE OUR NEW COOKIE AUTHENTICATOR
+        'accounts.authentication.CookieJWTAuthentication', 
     ),
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated', # Default to secure
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
-
 from datetime import timedelta
 
 SIMPLE_JWT = {
