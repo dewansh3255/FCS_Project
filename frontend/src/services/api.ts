@@ -1,6 +1,6 @@
 // src/services/api.ts
 
-const API_BASE_URL = ""; // Base URL for Django API
+export const API_BASE_URL = ""; // Base URL for Django API
 
 export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string) => {
   try {
@@ -42,6 +42,7 @@ export const registerUser = async (userData: any) => {
     const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(userData),
     });
     if (!response.ok) {
@@ -60,6 +61,7 @@ export const loginUser = async (credentials: any) => {
     const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(credentials),
     });
     if (!response.ok) {
@@ -78,6 +80,7 @@ export const getTOTPSetupURI = async (userId: number) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/auth/totp/generate/${userId}/`, {
       method: "GET",
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to fetch TOTP URI");
     return await response.json();
@@ -106,3 +109,33 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
     throw error;
   }
 };
+
+// -------- Resume helpers --------
+export const uploadResume = async (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.detail || 'Upload failed');
+  }
+  return await response.json();
+};
+
+export const listResumes = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to retrieve resumes');
+  }
+  return await response.json();
+};
+
+export const downloadResumeUrl = (id: number) =>
+  `${API_BASE_URL}/api/jobs/resume/${id}/download/`;

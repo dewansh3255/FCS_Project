@@ -135,8 +135,9 @@ class VerifyTOTPView(APIView):
 
             refresh = RefreshToken.for_user(user)
             response = Response(
-                {"message": "Logged in securely!"}, status=status.HTTP_200_OK)
+                {"message": "Logged in securely!", "access_token": str(refresh.access_token)}, status=status.HTTP_200_OK)
 
+            # secure=True because requests come through HTTPS via nginx
             response.set_cookie('access_token', str(
                 refresh.access_token), httponly=True, secure=True, samesite='Lax')
             response.set_cookie('refresh_token', str(
@@ -158,6 +159,14 @@ class ProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
     lookup_field = 'user__username'
     lookup_url_kwarg = 'username'
     queryset = Profile.objects.all()
+
+
+class AuthCheckView(APIView):
+    """Simple authentication check for frontend guards."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"authenticated": True}, status=status.HTTP_200_OK)
 
     def get_object(self):
         # If no username is provided in URL, return the logged-in user's profile
