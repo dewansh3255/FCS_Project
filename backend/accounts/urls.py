@@ -8,7 +8,8 @@ from .views import (
     UploadKeysView, 
     GenerateTOTPURIView, 
     VerifyTOTPView,
-    ProfileRetrieveUpdateView
+    ProfileRetrieveUpdateView,
+    AuthCheckView,
 )
 
 urlpatterns = [
@@ -27,4 +28,6 @@ urlpatterns = [
     # Profiles
     path('profile/me/', ProfileRetrieveUpdateView.as_view(), name='my_profile'),
     path('profile/<str:username>/', ProfileRetrieveUpdateView.as_view(), name='user_profile'),
+    # simple check endpoint for frontend auth guard
+    path('auth-check/', AuthCheckView.as_view(), name='auth_check'),
 ]

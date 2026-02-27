@@ -1,14 +1,33 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Register from './pages/Register';
 import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import { API_BASE_URL } from './services/api';
 
-// A placeholder for the dashboard you'll build later
-const DashboardPlaceholder = () => (
-  <div className="p-10 text-center">
-    <h1 className="text-3xl font-bold text-green-600">✅ You are successfully logged in!</h1>
-    <p className="mt-4">Your keys are generated and session is secured.</p>
-  </div>
-);
+// helper component that performs an auth check
+function PrivateRoute({ children }: { children: JSX.Element }) {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/auth-check/`, {
+          credentials: 'include',
+        });
+        setAuthed(res.ok);
+      } catch (e) {
+        setAuthed(false);
+      }
+    };
+    check();
+  }, []);
+
+  if (authed === null) {
+    return <div className="p-4">Checking authentication…</div>;
+  }
+  return authed ? children : <Navigate to="/login" />;
+}
 
 function App() {
   return (
@@ -16,7 +35,14 @@ function App() {
       <Routes>
         <Route path="/" element={<Register />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<DashboardPlaceholder />} />
+        <Route
+          path="/dashboard"
+          element={
+            <PrivateRoute>
+              <Dashboard />
+            </PrivateRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
