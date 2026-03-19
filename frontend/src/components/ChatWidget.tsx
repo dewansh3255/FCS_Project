@@ -47,7 +47,8 @@ export default function ChatWidget() {
     setError('');
     try {
       const myKeys = await getMyKeys();
-      const unlockedKey = await unwrapPrivateKey(myKeys.encrypted_private_key, password);
+      const username = localStorage.getItem('username') || '';
+      const unlockedKey = await unwrapPrivateKey(myKeys.encrypted_private_key, password, username);
       setPrivateKey(unlockedKey);
       setIsUnlocked(true);
       fetchInbox(unlockedKey); // Initial fetch

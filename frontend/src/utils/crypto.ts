@@ -40,7 +40,7 @@ const deriveAESKeyFromPassword = async (password: string, salt: Uint8Array): Pro
  * Main Function: Generates RSA keys and wraps the private key with the user's password.
  * This runs when a user REGISTERS.
  */
-export const generateAndWrapKeys = async (password: string) => {
+export const generateAndWrapKeys = async (password: string, username: string) => {
   // 1. Generate RSA-OAEP Keypair (2048-bit)
   const keyPair = await window.crypto.subtle.generateKey(
     {
@@ -63,7 +63,7 @@ export const generateAndWrapKeys = async (password: string) => {
   // 4. Encrypt the Private Key with AES-GCM using the user's password
   // We use a static salt for the PBKDF2 derivation here for simplicity, 
   // but in production, this should be a random salt stored in the DB per user.
-  const salt = new TextEncoder().encode("fcs_secure_salt_2026");
+  const salt = new TextEncoder().encode("fcs_secure_salt_2026_" + username);
   const aesKey = await deriveAESKeyFromPassword(password, salt);
 
   const iv = window.crypto.getRandomValues(new Uint8Array(12)); // AES-GCM requires a 12-byte IV
@@ -98,13 +98,13 @@ export const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 };
 
 // 1. Decrypt the Private Key using the user's password
-export const unwrapPrivateKey = async (encryptedPrivateKeyBase64: string, password: string): Promise<CryptoKey> => {
+export const unwrapPrivateKey = async (encryptedPrivateKeyBase64: string, password: string, username: string): Promise<CryptoKey> => {
   const encryptedBuffer = base64ToArrayBuffer(encryptedPrivateKeyBase64);
   const iv = encryptedBuffer.slice(0, 12);
   const data = encryptedBuffer.slice(12);
 
   // Re-derive the AES key from the password to unlock it
-  const salt = new TextEncoder().encode("fcs_secure_salt_2026");
+  const salt = new TextEncoder().encode("fcs_secure_salt_2026_" + username);
   const aesKey = await deriveAESKeyFromPassword(password, salt); // Note: Make sure deriveAESKeyFromPassword is exported in your file!
 
   const decryptedPKCS8 = await window.crypto.subtle.decrypt(
@@ -202,12 +202,12 @@ export const decryptMessage = async (encryptedContentBase64: string, encryptedKe
 // --- PHASE 4: PKI & DIGITAL SIGNATURES ---
 
 // 1. Import the Private Key specifically for SIGNING (RSA-PSS)
-export const unwrapSigningKey = async (encryptedPrivateKeyBase64: string, password: string): Promise<CryptoKey> => {
+export const unwrapSigningKey = async (encryptedPrivateKeyBase64: string, password: string, username: string): Promise<CryptoKey> => {
   const encryptedBuffer = base64ToArrayBuffer(encryptedPrivateKeyBase64);
   const iv = encryptedBuffer.slice(0, 12);
   const data = encryptedBuffer.slice(12);
 
-  const salt = new TextEncoder().encode("fcs_secure_salt_2026");
+  const salt = new TextEncoder().encode("fcs_secure_salt_2026_" + username);
   const aesKey = await deriveAESKeyFromPassword(password, salt);
 
   const decryptedPKCS8 = await window.crypto.subtle.decrypt(

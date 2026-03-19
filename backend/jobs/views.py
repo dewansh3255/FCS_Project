@@ -8,12 +8,14 @@ from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Resume, ResumeKey
-from .serializers import ResumeSerializer
+from .models import Resume, ResumeKey, Company, Job, Application
+from .serializers import ResumeSerializer, CompanySerializer, JobSerializer, ApplicationSerializer
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework import status
+from rest_framework import status, generics, filters
 from django.db import transaction
+from django.db.models import Q
+from accounts.audit import create_audit_log
 
 
 # class ResumeUploadView(APIView):
@@ -52,6 +54,8 @@ class ResumeUploadView(APIView):
             digital_signature=digital_signature
         )
         
+        create_audit_log('RESUME_UPLOAD', request.user, {'resume_id': resume.id})
+
         serializer = ResumeSerializer(resume)
         return Response(serializer.data)
 
@@ -135,4 +139,75 @@ class DeleteResumeView(APIView):
 
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+class CompanyListCreateView(generics.ListCreateAPIView):
+    serializer_class = CompanySerializer
+    permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return Company.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+
+class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CompanySerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Company.objects.all()
+
+
+class JobListCreateView(generics.ListCreateAPIView):
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Job.objects.filter(is_active=True)
+        q = self.request.query_params.get('q')
+        job_type = self.request.query_params.get('job_type')
+        location = self.request.query_params.get('location')
+        if q:
+            qs = qs.filter(
+                Q(title__icontains=q) |
+                Q(description__icontains=q) |
+                Q(required_skills__icontains=q) |
+                Q(company__name__icontains=q)
+            )
+        if job_type:
+            qs = qs.filter(job_type=job_type)
+        if location:
+            qs = qs.filter(location__icontains=location)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = JobSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Job.objects.all()
+
+
+class ApplicationListCreateView(generics.ListCreateAPIView):
+    serializer_class = ApplicationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'RECRUITER':
+            return Application.objects.filter(job__company__owner=user)
+        return Application.objects.filter(applicant=user)
+
+    def perform_create(self, serializer):
+        serializer.save(applicant=self.request.user)
+
+
+class ApplicationDetailView(generics.RetrieveUpdateAPIView):
+    serializer_class = ApplicationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'RECRUITER':
+            return Application.objects.filter(job__company__owner=user)
+        return Application.objects.filter(applicant=user)

@@ -14,6 +14,7 @@ from .views import (
     MessageListCreateView,
     UserListView,
     GetMyKeysView,
+    AuditLogListView,
 )
 
 urlpatterns = [
@@ -37,10 +38,10 @@ urlpatterns = [
 
     path('keys/upload/', UploadKeysView.as_view(), name='upload_keys'),
     path('keys/me/', GetMyKeysView.as_view(), name='my_keys'),
-    path('keys/<str:username>/', GetPublicKeyView.as_view(), name='get_public_key'), # <-- ADD THIS
+    path('keys/<str:username>/', GetPublicKeyView.as_view(), name='get_public_key'),
     path('messages/', MessageListCreateView.as_view(), name='messages'),
-    path('users/', UserListView.as_view(), name='user_list'), # <-- ADD THIS
+    path('users/', UserListView.as_view(), name='user_list'), 
 
-
+    path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
     
 ]

@@ -6,6 +6,7 @@ import {
 } from '../services/api';
 import { unwrapSigningKey, signFileDocument } from '../utils/crypto';
 import ChatWidget from '../components/ChatWidget';
+import Navbar from '../components/Navbar';
 
 interface Resume {
   id: number;
@@ -98,7 +99,8 @@ export default function Dashboard() {
       const myKeys = await getMyKeys();
       
       // 2. Unlock the RSA-PSS signing key using the password
-      const signingKey = await unwrapSigningKey(myKeys.encrypted_private_key, password);
+      const username = localStorage.getItem('username') || '';
+      const signingKey = await unwrapSigningKey(myKeys.encrypted_private_key, password, username);
       
       // 3. Hash the PDF and Sign it mathematically
       const signatureBase64 = await signFileDocument(selectedFile, signingKey);
@@ -120,7 +122,9 @@ export default function Dashboard() {
   if (!profile) return <div className="p-10 text-center text-xl font-bold">Loading secure dashboard...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
+    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <Navbar role={profile?.role} username={profile?.username || localStorage.getItem('username') || ''} />
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
       <div className="max-w-5xl mx-auto">
         <h1 className="text-3xl font-bold mb-6 text-gray-800">Welcome, {profile.username}</h1>
         
@@ -226,6 +230,7 @@ export default function Dashboard() {
           </div>
 
         </div>
+      </div>
       </div>
       <ChatWidget />
     </div>

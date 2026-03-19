@@ -47,9 +47,11 @@ export default function Register() {
       // 1. Verify TOTP (This logs the user in and sets the secure HTTP-only cookie!)
       await verifyTOTPCode(userId, otpCode);
 
+      localStorage.setItem('username', formData.username);
+      
       // 2. Now that we are logged in, generate the RSA keys and wrap them with the password
       setSuccess("Securing account with End-to-End Encryption...");
-      const { publicKey, encryptedPrivateKey } = await generateAndWrapKeys(formData.password);
+      const { publicKey, encryptedPrivateKey } = await generateAndWrapKeys(formData.password, formData.username);
 
       // 3. Upload them to our new endpoint
       await uploadKeys(publicKey, encryptedPrivateKey);

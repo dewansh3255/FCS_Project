@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 import pyotp
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
+from .audit import create_audit_log
+from .models import AuditLog
 
 User = get_user_model()
 
@@ -56,6 +58,8 @@ class RegisterView(APIView):
             user.totp_secret = pyotp.random_base32()
             user.save()
             
+            create_audit_log('REGISTER', user, {'username': user.username})
+
             return Response({
                 "message": "User registered successfully. Proceed to 2FA setup.",
                 "user_id": user.id # <--- We return this so the frontend can request the QR code
@@ -125,6 +129,8 @@ class VerifyTOTPView(APIView):
         if totp.verify(code):
             user.is_verified = True
             user.save()
+
+            create_audit_log('LOGIN_SUCCESS', user, {'user_id': user.id})
 
             refresh = RefreshToken.for_user(user)
             response = Response(
@@ -230,3 +236,14 @@ class GetMyKeysView(APIView):
             }, status=status.HTTP_200_OK)
         except UserKeys.DoesNotExist:
             return Response({"error": "No keys found."}, status=status.HTTP_404_NOT_FOUND)
+
+class AuditLogListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'ADMIN':
+            return Response({'error': 'Admin only.'}, status=status.HTTP_403_FORBIDDEN)
+        logs = AuditLog.objects.all().order_by('id').values(
+            'id', 'action', 'timestamp', 'prev_hash', 'current_hash', 'details'
+        )
+        return Response(list(logs))

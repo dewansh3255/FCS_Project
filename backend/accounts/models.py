@@ -100,6 +100,23 @@ class Message(models.Model):
     def __str__(self):
         return f"Secure message from {self.sender.username} to {self.recipient.username} at {self.timestamp}"
     
+class AuditLog(models.Model):
+    action = models.CharField(max_length=100)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True
+    )
+    details = models.TextField(blank=True)
+    timestamp = models.CharField(max_length=50)
+    prev_hash = models.CharField(max_length=64)
+    current_hash = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f"[{self.timestamp}] {self.action} by {self.user}"
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):

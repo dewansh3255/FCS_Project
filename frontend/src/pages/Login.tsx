@@ -31,8 +31,8 @@ export default function Login() {
 
     try {
       await verifyTOTPCode(userId, otpCode);
-      // Login successful, keys already exist from registration, just go to dashboard!
-      navigate('/dashboard'); 
+      localStorage.setItem('username', credentials.username);
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message);
     }

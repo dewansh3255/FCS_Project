@@ -29,11 +29,12 @@ class UserKeysSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
+    role = serializers.CharField(source='user.role', read_only=True)  # ADD THIS
 
     class Meta:
         model = Profile
         fields = [
-            'username', 'headline', 'bio', 'location', 'skills',
+            'username', 'role', 'headline', 'bio', 'location', 'skills',  # ADD role here
             'is_headline_public', 'is_bio_public', 'is_location_public', 'is_skills_public'
         ]
 

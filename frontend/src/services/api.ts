@@ -179,9 +179,10 @@ export const getMyResumes = async () => {
 export const uploadResume = async (file: File, digitalSignature: string) => {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('digital_signature', digitalSignature); // <-- Send signature to backend
+  // send sigrnature as part of form data to backend for verification
+  formData.append('digital_signature', digitalSignature);
 
-  const response = await fetch(`${API_BASE_URL}api/jobs/resume/upload/`, {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
     method: 'POST',
     body: formData,
     credentials: 'include',
@@ -285,5 +286,130 @@ export const getMessages = async () => {
 export const getMyKeys = async () => {
   const response = await fetch(`${API_BASE_URL}/api/auth/keys/me/`, { credentials: 'include' });
   if (!response.ok) throw new Error('Failed to fetch your keys');
+  return response.json();
+};
+
+// --- JOBS API ---
+export const getJobs = async (params?: { q?: string; job_type?: string; location?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.q) query.append('q', params.q);
+  if (params?.job_type) query.append('job_type', params.job_type);
+  if (params?.location) query.append('location', params.location);
+  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/?${query.toString()}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch jobs');
+  return response.json();
+};
+
+export const getJob = async (id: number) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch job');
+  return response.json();
+};
+
+export const createJob = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to create job');
+  return response.json();
+};
+
+export const updateJob = async (id: number, data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update job');
+  return response.json();
+};
+
+export const deleteJob = async (id: number) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to delete job');
+};
+
+// --- COMPANIES API ---
+export const getCompanies = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch companies');
+  return response.json();
+};
+
+export const createCompany = async (data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to create company');
+  return response.json();
+};
+
+export const updateCompany = async (id: number, data: any) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/${id}/`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update company');
+  return response.json();
+};
+
+// --- APPLICATIONS API ---
+export const getApplications = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch applications');
+  return response.json();
+};
+
+export const applyToJob = async (jobId: number, resumeId: number | null, coverNote: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ job: jobId, resume: resumeId, cover_note: coverNote }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.non_field_errors?.[0] || err?.detail || 'Failed to apply');
+  }
+  return response.json();
+};
+
+export const updateApplicationStatus = async (id: number, status: string, recruiterNotes?: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/${id}/`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ status, recruiter_notes: recruiterNotes }),
+  });
+  if (!response.ok) throw new Error('Failed to update application');
+  return response.json();
+};
+
+// --- AUDIT LOG API ---
+export const getAuditLogs = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/auth/audit-logs/`, {
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error('Failed to fetch audit logs');
   return response.json();
 };

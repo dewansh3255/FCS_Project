@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
 from .models import User, UserKeys, Profile, Message
+from .models import AuditLog
 
 @admin.register(User)
 class UserAdmin(DefaultUserAdmin):
@@ -35,3 +36,8 @@ class MessageAdmin(admin.ModelAdmin):
     search_fields = ('sender__username', 'recipient__username')
     # Make the fields read-only in admin so even the superuser can't tamper with the ciphertext
     readonly_fields = ('sender', 'recipient', 'encrypted_content', 'encrypted_key', 'timestamp')
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('timestamp', 'action', 'user', 'current_hash')
+    readonly_fields = ('action', 'user', 'details', 'timestamp', 'prev_hash', 'current_hash')

@@ -83,8 +83,76 @@ class ResumeKey(models.Model):
         on_delete=models.CASCADE,
         related_name='resume_key'
     )
-    key = models.CharField(max_length=100)
+    key = models.CharField(
+        max_length=200,
+        help_text="Fernet symmetric key — in production this should be wrapped with an admin public key"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Key for resume {self.resume.pk}"
+
+class Company(models.Model):
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='companies'
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    location = models.CharField(max_length=200, blank=True)
+    website = models.URLField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Job(models.Model):
+    class JobType(models.TextChoices):
+        FULL_TIME = 'FULL_TIME', 'Full Time'
+        INTERNSHIP = 'INTERNSHIP', 'Internship'
+        REMOTE = 'REMOTE', 'Remote'
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='jobs')
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    required_skills = models.TextField(blank=True, help_text="Comma separated")
+    location = models.CharField(max_length=200, blank=True)
+    job_type = models.CharField(max_length=20, choices=JobType.choices, default=JobType.FULL_TIME)
+    salary_min = models.IntegerField(null=True, blank=True)
+    salary_max = models.IntegerField(null=True, blank=True)
+    deadline = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.title} at {self.company.name}"
+
+
+class Application(models.Model):
+    class Status(models.TextChoices):
+        APPLIED = 'APPLIED', 'Applied'
+        REVIEWED = 'REVIEWED', 'Reviewed'
+        INTERVIEWED = 'INTERVIEWED', 'Interviewed'
+        REJECTED = 'REJECTED', 'Rejected'
+        OFFER = 'OFFER', 'Offer'
+
+    applicant = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='applications'
+    )
+    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
+    resume = models.ForeignKey(Resume, on_delete=models.SET_NULL, null=True, blank=True)
+    cover_note = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.APPLIED)
+    recruiter_notes = models.TextField(blank=True)
+    applied_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('applicant', 'job')
+
+    def __str__(self):
+        return f"{self.applicant.username} → {self.job.title}"

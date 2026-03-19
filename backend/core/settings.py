@@ -10,6 +10,10 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
 
+CSRF_TRUSTED_ORIGINS = ['https://localhost', 'http://localhost']
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -122,6 +126,7 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
