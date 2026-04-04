@@ -15,6 +15,7 @@ export default function Navbar({ role, username }: NavbarProps) {
     { label: 'My Applications', path: '/applications', roles: ['CANDIDATE'] },
     { label: 'Post a Job', path: '/recruiter', roles: ['RECRUITER'] },
     { label: 'Admin Panel', path: '/admin-panel', roles: ['ADMIN'] },
+    { label: 'Settings', path: '/settings', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
   ];
 
   const visible = links.filter(l => !role || l.roles.includes(role));

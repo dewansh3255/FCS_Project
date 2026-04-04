@@ -14,6 +14,7 @@ from .views import (
     MessageListCreateView,
     UserListView,
     GetMyKeysView,
+    ChangeUserRoleView,
     AuditLogListView,
 )
 
@@ -40,7 +41,9 @@ urlpatterns = [
     path('keys/me/', GetMyKeysView.as_view(), name='my_keys'),
     path('keys/<str:username>/', GetPublicKeyView.as_view(), name='get_public_key'),
     path('messages/', MessageListCreateView.as_view(), name='messages'),
-    path('users/', UserListView.as_view(), name='user_list'), 
+    path('users/', UserListView.as_view(), name='user_list'),
+    
+    path('role/change/', ChangeUserRoleView.as_view(), name='change_role'),
 
     path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
     

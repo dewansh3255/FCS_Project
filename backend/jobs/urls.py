@@ -2,8 +2,8 @@ from django.urls import path
 from .views import (
     DownloadResumeView, ResumeUploadView, ResumeListView, DeleteResumeView,
     CompanyListCreateView, CompanyDetailView,
-    JobListCreateView, JobDetailView,
-    ApplicationListCreateView, ApplicationDetailView,
+    JobListCreateView, JobDetailView, JobApplicationsListView,
+    ApplicationListCreateView, ApplicationDetailView, DownloadApplicationResumeView,
 )
 
 urlpatterns = [
@@ -20,8 +20,10 @@ urlpatterns = [
     # Jobs
     path('jobs/', JobListCreateView.as_view(), name='job_list'),
     path('jobs/<int:pk>/', JobDetailView.as_view(), name='job_detail'),
+    path('jobs/<int:job_id>/applications/', JobApplicationsListView.as_view(), name='job_applications'),
 
     # Applications
     path('applications/', ApplicationListCreateView.as_view(), name='application_list'),
     path('applications/<int:pk>/', ApplicationDetailView.as_view(), name='application_detail'),
+    path('applications/<int:application_id>/resume/', DownloadApplicationResumeView.as_view(), name='download_application_resume'),
 ]
