@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import {
   getCompanies, createCompany, createJob,
-  getApplications, updateApplicationStatus, getMyProfile, getJobs
+  getApplications, updateApplicationStatus, getMyProfile, getJobs, downloadApplicationResume
 } from '../services/api';
 
 const STATUS_OPTIONS = ['APPLIED', 'REVIEWED', 'INTERVIEWED', 'REJECTED', 'OFFER'];
@@ -35,6 +35,7 @@ export default function Recruiter() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [noteInputs, setNoteInputs] = useState<Record<number, string>>({});
+  const [downloadingResume, setDownloadingResume] = useState<number | null>(null);
 
   const loadAll = async () => {
     try {
@@ -87,6 +88,24 @@ export default function Recruiter() {
       setMessage('Application updated!');
       loadAll();
     } catch { setError('Failed to update status.'); }
+  };
+
+  const handleDownloadResume = (applicationId: number, applicantName: string) => {
+    setDownloadingResume(applicationId);
+    try {
+      const url = downloadApplicationResume(applicationId);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${applicantName}_resume.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setMessage(`Resume downloaded successfully!`);
+    } catch (err) {
+      setError('Failed to download resume.');
+    } finally {
+      setDownloadingResume(null);
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -286,6 +305,31 @@ export default function Recruiter() {
                       )}
 
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                        {app.resume && (
+                          <button
+                            onClick={() => handleDownloadResume(app.id, app.applicant_username)}
+                            disabled={downloadingResume === app.id}
+                            style={{
+                              background: '#3b82f6', color: '#fff', border: 'none',
+                              borderRadius: 8, padding: '6px 14px', fontSize: 13,
+                              fontWeight: 600, cursor: downloadingResume === app.id ? 'not-allowed' : 'pointer',
+                              opacity: downloadingResume === app.id ? 0.7 : 1,
+                              transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (downloadingResume !== app.id) {
+                                (e.target as HTMLButtonElement).style.background = '#1e40af';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (downloadingResume !== app.id) {
+                                (e.target as HTMLButtonElement).style.background = '#3b82f6';
+                              }
+                            }}
+                          >
+                            {downloadingResume === app.id ? '⏳ Downloading...' : '📄 Resume'}
+                          </button>
+                        )}
                         <select
                           value={app.status}
                           onChange={e => handleStatusChange(app.id, e.target.value)}

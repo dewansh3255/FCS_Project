@@ -237,6 +237,46 @@ class GetMyKeysView(APIView):
         except UserKeys.DoesNotExist:
             return Response({"error": "No keys found."}, status=status.HTTP_404_NOT_FOUND)
 
+class ChangeUserRoleView(APIView):
+    """
+    Allows authenticated users to change their role between CANDIDATE and RECRUITER.
+    Users cannot self-assign ADMIN role (only Django admin can do that).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        new_role = request.data.get('role', '').upper()
+        
+        # Only allow switching between CANDIDATE and RECRUITER
+        if new_role not in ['CANDIDATE', 'RECRUITER']:
+            return Response(
+                {'error': 'Invalid role. Must be CANDIDATE or RECRUITER.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        old_role = request.user.role
+        if old_role == new_role:
+            return Response(
+                {'message': f'Already a {new_role}.'},
+                status=status.HTTP_200_OK
+            )
+        
+        # Update the role
+        request.user.role = new_role
+        request.user.save()
+        
+        # Audit log the role change
+        create_audit_log('ROLE_CHANGE', request.user, {
+            'old_role': old_role,
+            'new_role': new_role
+        })
+        
+        return Response({
+            'message': f'Role changed from {old_role} to {new_role}.',
+            'role': new_role
+        }, status=status.HTTP_200_OK)
+
+
 class AuditLogListView(APIView):
     permission_classes = [IsAuthenticated]
 

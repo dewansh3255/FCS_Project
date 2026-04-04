@@ -7,6 +7,7 @@ from django.core.files.base import ContentFile
 
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from .models import Resume, ResumeKey, Company, Job, Application
 from .serializers import ResumeSerializer, CompanySerializer, JobSerializer, ApplicationSerializer
@@ -155,6 +156,28 @@ class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     queryset = Company.objects.all()
 
+    def get_object(self):
+        obj = super().get_object()
+        # Allow any user to retrieve, but only owner can edit/delete
+        return obj
+
+    def update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.owner != request.user:
+            raise PermissionDenied("You can only update companies you own.")
+        
+        response = super().update(request, *args, **kwargs)
+        create_audit_log('COMPANY_UPDATE', request.user, {'company_id': obj.id, 'name': obj.name})
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.owner != request.user:
+            raise PermissionDenied("You can only delete companies you own.")
+        
+        create_audit_log('COMPANY_DELETE', request.user, {'company_id': obj.id, 'name': obj.name})
+        return super().destroy(request, *args, **kwargs)
+
 
 class JobListCreateView(generics.ListCreateAPIView):
     serializer_class = JobSerializer
@@ -179,13 +202,51 @@ class JobListCreateView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save()
+        job = serializer.save()
+        create_audit_log('JOB_POSTING_CREATED', self.request.user, {
+            'job_id': job.id,
+            'title': job.title,
+            'company_id': job.company.id
+        })
 
 
 class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = JobSerializer
     permission_classes = [IsAuthenticated]
     queryset = Job.objects.all()
+
+    def get_object(self):
+        obj = super().get_object()
+        return obj
+
+    def update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.company.owner != request.user:
+            raise PermissionDenied("You can only update jobs for your company.")
+        
+        # Get the previous status for audit logging
+        old_is_active = obj.is_active
+        response = super().update(request, *args, **kwargs)
+        
+        create_audit_log('JOB_POSTING_UPDATED', request.user, {
+            'job_id': obj.id,
+            'title': obj.title,
+            'company_id': obj.company.id,
+            'is_active_changed': old_is_active != obj.is_active
+        })
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.company.owner != request.user:
+            raise PermissionDenied("You can only delete jobs for your company.")
+        
+        create_audit_log('JOB_POSTING_DELETED', request.user, {
+            'job_id': obj.id,
+            'title': obj.title,
+            'company_id': obj.company.id
+        })
+        return super().destroy(request, *args, **kwargs)
 
 
 class ApplicationListCreateView(generics.ListCreateAPIView):
@@ -199,7 +260,13 @@ class ApplicationListCreateView(generics.ListCreateAPIView):
         return Application.objects.filter(applicant=user)
 
     def perform_create(self, serializer):
-        serializer.save(applicant=self.request.user)
+        application = serializer.save(applicant=self.request.user)
+        create_audit_log('APPLICATION_SUBMITTED', self.request.user, {
+            'application_id': application.id,
+            'job_id': application.job.id,
+            'job_title': application.job.title,
+            'resume_id': application.resume.id if application.resume else None
+        })
 
 
 class ApplicationDetailView(generics.RetrieveUpdateAPIView):
@@ -211,3 +278,104 @@ class ApplicationDetailView(generics.RetrieveUpdateAPIView):
         if user.role == 'RECRUITER':
             return Application.objects.filter(job__company__owner=user)
         return Application.objects.filter(applicant=user)
+
+    def update(self, request, *args, **kwargs):
+        application = self.get_object()
+        
+        # Only recruiters can update application status
+        if request.user != application.job.company.owner:
+            raise PermissionDenied("You can only update applications for your jobs.")
+        
+        old_status = application.status
+        response = super().update(request, *args, **kwargs)
+        
+        if old_status != application.status:
+            create_audit_log('APPLICATION_STATUS_CHANGED', request.user, {
+                'application_id': application.id,
+                'job_id': application.job.id,
+                'applicant_id': application.applicant.id,
+                'old_status': old_status,
+                'new_status': application.status
+            })
+        
+        return response
+
+
+class JobApplicationsListView(generics.ListAPIView):
+    """
+    Get all applications for a specific job.
+    Only the recruiter (company owner) can see applications for their jobs.
+    """
+    serializer_class = ApplicationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        job_id = self.kwargs.get('job_id')
+        try:
+            job = Job.objects.get(pk=job_id)
+        except Job.DoesNotExist:
+            return Application.objects.none()
+        
+        # Only company owner can see applications
+        if job.company.owner != self.request.user:
+            raise PermissionDenied("You can only view applications for your jobs.")
+        
+        return Application.objects.filter(job=job).order_by('-applied_at')
+
+
+class DownloadApplicationResumeView(APIView):
+    """
+    Recruiter can download the resume of an applicant.
+    Only the recruiter (job company owner) can access the resume of applicants to their jobs.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, application_id, format=None):
+        try:
+            application = Application.objects.get(pk=application_id)
+        except Application.DoesNotExist:
+            raise Http404("Application not found")
+
+        # Check that the requester owns the company that posted this job
+        if application.job.company.owner != request.user:
+            return HttpResponseForbidden("You can only download resumes from applicants to your jobs.")
+
+        # Check that the application has a resume
+        if not application.resume:
+            return Response(
+                {"detail": "This applicant did not submit a resume."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        resume = application.resume
+
+        # Read encrypted file
+        try:
+            resume.file.open('rb')
+            encrypted = resume.file.read()
+
+            key_obj = resume.resume_key
+            f = Fernet(key_obj.key.encode())
+            decrypted = f.decrypt(encrypted)
+        except Exception as e:
+            return HttpResponseForbidden("Unable to decrypt file")
+
+        # Strip .enc suffix if present
+        basename = os.path.basename(resume.file.name)
+        if basename.endswith('.enc'):
+            basename = basename[:-4]
+
+        # Log the resume download
+        create_audit_log('RESUME_DOWNLOADED_BY_RECRUITER', request.user, {
+            'application_id': application.id,
+            'resume_id': resume.id,
+            'applicant_id': application.applicant.id,
+            'job_id': application.job.id
+        })
+
+        response = FileResponse(
+            ContentFile(decrypted),
+            filename=basename,
+            content_type='application/pdf'
+        )
+        return response

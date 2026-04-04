@@ -405,11 +405,40 @@ export const updateApplicationStatus = async (id: number, status: string, recrui
   return response.json();
 };
 
+export const downloadApplicationResume = (applicationId: number) => 
+  `${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`;
+
+export const getJobApplicationResume = async (applicationId: number) => {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.detail || 'Failed to fetch resume');
+  }
+  return response.blob();
+};
+
 // --- AUDIT LOG API ---
 export const getAuditLogs = async () => {
   const response = await fetch(`${API_BASE_URL}/api/auth/audit-logs/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch audit logs');
+  return response.json();
+};
+
+// --- USER ROLE API ---
+export const changeUserRole = async (newRole: 'CANDIDATE' | 'RECRUITER') => {
+  const response = await fetch(`${API_BASE_URL}/api/auth/role/change/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ role: newRole }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => null);
+    throw new Error(err?.error || err?.message || 'Failed to change role');
+  }
   return response.json();
 };

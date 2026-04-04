@@ -7,6 +7,7 @@ import Jobs from './pages/Jobs';
 import Applications from './pages/Applications';
 import Recruiter from './pages/Recruiter';
 import AdminPanel from './pages/AdminPanel';
+import Settings from './pages/Settings';
 import { API_BASE_URL } from './services/api';
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
@@ -37,6 +38,7 @@ function App() {
         <Route path="/applications" element={<PrivateRoute><Applications /></PrivateRoute>} />
         <Route path="/recruiter" element={<PrivateRoute><Recruiter /></PrivateRoute>} />
         <Route path="/admin-panel" element={<PrivateRoute><AdminPanel /></PrivateRoute>} />
+        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
