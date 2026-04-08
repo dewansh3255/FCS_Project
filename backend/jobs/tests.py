@@ -42,7 +42,10 @@ class ResumeEncryptionTests(TestCase):
         self.client.force_authenticate(user=self.recruiter)
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.content, content)
+        # self.assertEqual(resp.content, content)
+        # Join the streamed chunks into a single bytes object for comparison
+        response_content = b''.join(resp.streaming_content)
+        self.assertEqual(response_content, content)
 
         # unauthorized other user
         other = User.objects.create_user(username='other', password='a')
