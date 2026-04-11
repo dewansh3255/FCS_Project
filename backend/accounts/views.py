@@ -3,7 +3,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny  # <--- IMPORT THIS
+from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle
 from .models import UserKeys, Profile, Message
 from .serializers import UserRegistrationSerializer, UserKeysSerializer, ProfileSerializer, MessageSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -21,13 +22,62 @@ from .serializers import ChatGroupSerializer, GroupMessageSerializer, GroupMembe
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.conf import settings
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from .audit import create_audit_log
 
 User = get_user_model()
+
+
+class LoginRateThrottle(AnonRateThrottle):
+    """5 TOTP/login attempts per minute per IP — brute force protection."""
+    rate = '5/min'
+
+
+# ── TOTP Lockout helpers ────────────────────────────────────────────────────
+TOTP_MAX_ATTEMPTS = 3
+TOTP_LOCKOUT_SECONDS = 15 * 60  # 15 minutes
+
+
+def _totp_fail_key(username: str) -> str:
+    return f"totp_fail_count_{username.lower()}"
+
+
+def _totp_lock_key(username: str) -> str:
+    return f"totp_locked_{username.lower()}"
+
+
+def _check_totp_lockout(username: str):
+    """Returns (locked: bool, seconds_remaining: int)."""
+    remaining = cache.ttl(_totp_lock_key(username))
+    if remaining and remaining > 0:
+        return True, remaining
+    return False, 0
+
+
+def _record_totp_failure(username: str):
+    """
+    Increments the failure counter for a username.
+    Triggers a 15-minute lockout after TOTP_MAX_ATTEMPTS failures.
+    Returns (locked_now: bool, attempts_remaining: int).
+    """
+    fail_key = _totp_fail_key(username)
+    lock_key = _totp_lock_key(username)
+
+    failures = cache.get(fail_key, 0) + 1
+    cache.set(fail_key, failures, timeout=TOTP_LOCKOUT_SECONDS)
+
+    if failures >= TOTP_MAX_ATTEMPTS:
+        cache.set(lock_key, '1', timeout=TOTP_LOCKOUT_SECONDS)
+        cache.delete(fail_key)
+        return True, 0
+
+    return False, TOTP_MAX_ATTEMPTS - failures
+
+
+def _clear_totp_lockout(username: str):
+    """Clear failure state after a successful TOTP verification."""
+    cache.delete(_totp_fail_key(username))
+    cache.delete(_totp_lock_key(username))
+# ────────────────────────────────────────────────────
 
 
 class UploadKeysView(APIView):
@@ -59,26 +109,36 @@ class UploadKeysView(APIView):
 
 class RegisterView(APIView):
     """
-    MEMBER A: Registration Endpoint
-    Creates the user and automatically generates their TOTP secret.
+    MEMBER A: Deferred Registration Endpoint
+    Validates input and generates TOTP secret. User is NOT written to the DB yet.
+    Data is stored in Redis under a session token for 15 minutes.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
+        if not serializer.is_valid():
+            print("REGISTER VALIDATION ERRORS:", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            # Generate the TOTP secret immediately upon registration
-            user.totp_secret = pyotp.random_base32()
-            user.save()
+        session_id = secrets.token_hex(16)
+        totp_secret = pyotp.random_base32()
 
-            create_audit_log('REGISTER', user, {'username': user.username})
+        cache_data = serializer.validated_data.copy()
+        cache_data['totp_secret'] = totp_secret
+        
+        # Store in redis
+        cache.set(f"reg_{session_id}", cache_data, timeout=900)
 
-            return Response({
-                "message": "User registered successfully. Proceed to 2FA setup.",
-                "user_id": user.id  # <--- We return this so the frontend can request the QR code
-            }, status=status.HTTP_201_CREATED)
+        # Generate QR Code immediately
+        totp = pyotp.TOTP(totp_secret)
+        uri = totp.provisioning_uri(name=cache_data['username'], issuer_name="Secure Job Platform")
+
+        return Response({
+            "message": "User validated. Proceed to 2FA setup.",
+            "session_id": session_id,
+            "qr_uri": uri
+        }, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -86,12 +146,28 @@ class RegisterView(APIView):
 class CustomLoginView(APIView):
     """
     MEMBER A: Step 1 of Login (Password Check)
+    Also enforces any active TOTP lockout so users cannot brute-force
+    credentials while waiting for their TOTP window to expire.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
-        username = request.data.get('username')
+        username = request.data.get('username', '') or ''
         password = request.data.get('password')
+
+        # Enforce TOTP lockout at step 1 as well
+        if username:
+            locked, secs = _check_totp_lockout(username)
+            if locked:
+                mins = secs // 60
+                return Response({
+                    "error": f"This account is temporarily locked due to multiple failed 2FA attempts. "
+                             f"Please try again in {mins} minute(s).",
+                    "locked": True,
+                    "seconds_remaining": secs,
+                    "minutes_remaining": mins,
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
         user = authenticate(username=username, password=password)
         if user:
@@ -105,7 +181,8 @@ class CustomLoginView(APIView):
 
             return Response({
                 "message": "Credentials valid. Proceed to 2FA.",
-                "user_id": user.id
+                "user_id": user.id,
+                "username": user.username,
             }, status=status.HTTP_200_OK)
 
         return Response({"error": "Invalid username or password."}, status=status.HTTP_401_UNAUTHORIZED)
@@ -130,37 +207,134 @@ class GenerateTOTPURIView(APIView):
 class VerifyTOTPView(APIView):
     """
     MEMBER A: Step 2 of Login (OTP Check & Issue Cookies)
+    Rate-limited to 5 attempts/min per IP to prevent brute-force.
+    Per-username retry policy: 3 attempts allowed; 3rd failure triggers
+    a 15-minute Redis lockout stored under totp_locked_{username}.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
+        session_id = request.data.get("session_id")
         user_id = request.data.get("user_id")
         code = request.data.get("code")
 
-        if not user_id or not code:
-            return Response({"error": "Missing user_id or code."}, status=status.HTTP_400_BAD_REQUEST)
+        if not code:
+            return Response({"error": "Missing OTP code."}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = get_object_or_404(User, id=user_id)
-        totp = pyotp.TOTP(user.totp_secret)
+        # --- REGISTRATION ATTEMPT ---
+        if session_id:
+            data = cache.get(f"reg_{session_id}")
+            if not data:
+                return Response({"error": "Registration session expired. Please register again."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            totp = pyotp.TOTP(data['totp_secret'])
+            if not totp.verify(code, valid_window=1):
+                return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=data['username'],
+                    email=data['email'],
+                    password=data['password'],
+                    phone_number=data.get('phone_number'),
+                    role='CANDIDATE'
+                )
+                user.totp_secret = data['totp_secret']
+                user.is_verified = True
+                user.save()
 
-        if totp.verify(code):
-            user.is_verified = True
-            user.save()
-
-            create_audit_log('LOGIN_SUCCESS', user, {'user_id': user.id})
+                # Generate initial backup codes
+                import string, random, hashlib
+                from accounts.models import BackupCode
+                plaintext_codes = []
+                for _ in range(8):
+                    raw = ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
+                    formatted = f"{raw[:4]}-{raw[4:8]}-{raw[8:]}"
+                    code_hash = hashlib.sha256(formatted.encode()).hexdigest()
+                    BackupCode.objects.create(user=user, code_hash=code_hash)
+                    plaintext_codes.append(formatted)
+            
+            create_audit_log('REGISTER', user, {'username': user.username})
+            cache.delete(f"reg_{session_id}")
 
             refresh = RefreshToken.for_user(user)
-            response = Response(
-                {"message": "Logged in securely!", "access_token": str(refresh.access_token)}, status=status.HTTP_200_OK)
-
-            # secure=True because requests come through HTTPS via nginx
-            response.set_cookie('access_token', str(
-                refresh.access_token), httponly=True, secure=True, samesite='Lax')
-            response.set_cookie('refresh_token', str(
-                refresh), httponly=True, secure=True, samesite='Lax')
+            response = Response({
+                "message": "Registered and logged in securely!", 
+                "access_token": str(refresh.access_token), 
+                "user_id": user.id,
+                "backup_codes": plaintext_codes
+            }, status=status.HTTP_200_OK)
+            response.set_cookie('access_token', str(refresh.access_token), httponly=True, secure=True, samesite='Lax')
             return response
 
-        return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+        # --- LOGIN ATTEMPT ---
+        if not user_id:
+            return Response({"error": "Missing user_id for login verification."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, id=user_id)
+        username = user.username
+
+        # 1. Enforce any active lockout before even checking the code
+        locked, secs = _check_totp_lockout(username)
+        if locked:
+            mins = secs // 60
+            create_audit_log('LOGIN_TOTP_BLOCKED', user, {
+                'reason': 'Account locked — too many failed TOTP attempts',
+                'seconds_remaining': secs,
+            })
+            return Response({
+                "error": f"This account is locked due to too many failed 2FA attempts. "
+                         f"Please try again in {mins} minute(s) and {secs % 60} second(s).",
+                "locked": True,
+                "seconds_remaining": secs,
+                "minutes_remaining": mins,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # 2. Validate the TOTP code
+        totp = pyotp.TOTP(user.totp_secret)
+        code_valid = totp.verify(code, valid_window=0)
+
+        if not code_valid:
+            err_msg = 'Invalid OTP code.'
+            locked_now, attempts_left = _record_totp_failure(username)
+            create_audit_log('LOGIN_TOTP_FAILED', user, {
+                'reason': err_msg,
+                'attempts_remaining': attempts_left,
+            })
+
+            if locked_now:
+                return Response({
+                    "error": f"Too many failed 2FA attempts. This account has been locked for "
+                             f"{TOTP_LOCKOUT_SECONDS // 60} minutes.",
+                    "locked": True,
+                    "seconds_remaining": TOTP_LOCKOUT_SECONDS,
+                    "minutes_remaining": TOTP_LOCKOUT_SECONDS // 60,
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+            return Response({
+                "error": err_msg,
+                "locked": False,
+                "attempts_remaining": attempts_left,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Success — clear lockout and issue cookies
+        user.is_verified = True
+        user.save(update_fields=['is_verified'])
+        _clear_totp_lockout(username)
+
+        create_audit_log('LOGIN_SUCCESS', user, {'user_id': user.id})
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(
+            {"message": "Logged in securely!", "access_token": str(refresh.access_token), "user_id": user.id},
+            status=status.HTTP_200_OK,
+        )
+        response.set_cookie('access_token', str(
+            refresh.access_token), httponly=True, secure=True, samesite='Lax')
+        response.set_cookie('refresh_token', str(
+            refresh), httponly=True, secure=True, samesite='Lax')
+        return response
 
 
 class ProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
@@ -178,6 +352,17 @@ class ProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.profile
+
+
+class LogoutView(APIView):
+    """Securely clear the authentication cookies."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        response = Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
+        response.delete_cookie('access_token', path='/', domain=settings.SESSION_COOKIE_DOMAIN, samesite='Lax')
+        response.delete_cookie('refresh_token', path='/', domain=settings.SESSION_COOKIE_DOMAIN, samesite='Lax')
+        return response
 
 
 class AuthCheckView(APIView):
@@ -233,14 +418,26 @@ class MessageListCreateView(generics.ListCreateAPIView):
 class UserListView(APIView):
     """
     MEMBER B: Fetch List of Users for Chat
-    Returns a list of all users (excluding the requester) to populate the chat sidebar.
+    Returns a list of connected users to populate the chat sidebar.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Fetch all users EXCEPT the currently logged-in user
-        users = User.objects.exclude(
-            id=request.user.id).values('id', 'username')
+        user = request.user
+        # Fetch accepted connections where user is either sender or receiver
+        connections = Connection.objects.filter(
+            (Q(sender=user) | Q(receiver=user)),
+            status='ACCEPTED'
+        )
+        
+        connected_ids = []
+        for conn in connections:
+            if conn.sender_id == user.id:
+                connected_ids.append(conn.receiver_id)
+            else:
+                connected_ids.append(conn.sender_id)
+
+        users = User.objects.filter(id__in=connected_ids).values('id', 'username')
         return Response(list(users), status=status.HTTP_200_OK)
 
 

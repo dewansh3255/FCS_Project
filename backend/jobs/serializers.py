@@ -11,11 +11,16 @@ class ResumeSerializer(serializers.ModelSerializer):
 
 class CompanySerializer(serializers.ModelSerializer):
     owner_username = serializers.ReadOnlyField(source='owner.username')
+    employees_list = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
-        fields = ['id', 'owner', 'owner_username', 'name', 'description', 'location', 'website', 'created_at']
+        fields = ['id', 'owner', 'owner_username', 'name', 'description', 'location', 'website', 'created_at', 'employees_list']
         read_only_fields = ['owner']
+
+    def get_employees_list(self, obj):
+        return [{'id': e.id, 'username': e.username} for e in obj.employees.all()]
+
 
 
 class JobSerializer(serializers.ModelSerializer):

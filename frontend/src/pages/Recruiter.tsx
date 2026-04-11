@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import {
   getCompanies, createCompany, createJob,
-  getApplications, updateApplicationStatus, getMyProfile, getJobs, downloadApplicationResume, getPublicKey
+  getApplications, updateApplicationStatus, getMyProfile, getJobs, downloadApplicationResume, getPublicKey,
+  addCompanyEmployee, removeCompanyEmployee
 } from '../services/api';
 
 import { verifyFileSignature } from '../utils/crypto';
@@ -37,6 +38,7 @@ export default function Recruiter() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [noteInputs, setNoteInputs] = useState<Record<number, string>>({});
+  const [employeeInputs, setEmployeeInputs] = useState<Record<number, string>>({});
   const [downloadingResume, setDownloadingResume] = useState<number | null>(null);
 
   const loadAll = async () => {
@@ -90,6 +92,25 @@ export default function Recruiter() {
       setMessage('Application updated!');
       loadAll();
     } catch { setError('Failed to update status.'); }
+  };
+
+  const handleAddEmployee = async (companyId: number) => {
+    const username = employeeInputs[companyId];
+    if (!username) return;
+    try {
+      await addCompanyEmployee(companyId, username);
+      setMessage(`Added ${username} as recruiter!`);
+      setEmployeeInputs({ ...employeeInputs, [companyId]: '' });
+      loadAll();
+    } catch (err: any) { setError(err.message || 'Failed to add recruiter'); }
+  };
+
+  const handleRemoveEmployee = async (companyId: number, username: string) => {
+    try {
+      await removeCompanyEmployee(companyId, username);
+      setMessage(`Removed ${username} from recruiters!`);
+      loadAll();
+    } catch (err: any) { setError(err.message || 'Failed to remove recruiter'); }
   };
 
   // const handleDownloadResume = (applicationId: number, applicantName: string) => {
@@ -248,9 +269,30 @@ export default function Recruiter() {
                 <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
                   {companies.map(c => (
                     <div key={c.id} style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid #e2e8f0' }}>
-                      <p style={{ margin: '0 0 4px', fontWeight: 700, color: '#0f172a' }}>{c.name}</p>
+                      <p style={{ margin: '0 0 4px', fontWeight: 700, color: '#0f172a' }}>{c.name} {profile?.username === c.owner_username && <span style={{fontSize: 10, background: '#e2e8f0', padding: '2px 6px', borderRadius: 10, marginLeft: 6}}>Owner</span>}</p>
                       {c.location && <p style={{ margin: '0 0 2px', fontSize: 13, color: '#64748b' }}>📍 {c.location}</p>}
                       {c.website && <a href={c.website} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#3b82f6' }}>{c.website}</a>}
+                      
+                      {profile?.username === c.owner_username && (
+                        <div style={{ marginTop: 16, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+                          <p style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: '#475569' }}>Manage Recruiters</p>
+                          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                            <input 
+                              placeholder="Username to add" 
+                              value={employeeInputs[c.id] || ''} 
+                              onChange={e => setEmployeeInputs({...employeeInputs, [c.id]: e.target.value})} 
+                              style={{ ...inputStyle, padding: '6px 10px', fontSize: 13 }}
+                            />
+                            <button onClick={() => handleAddEmployee(c.id)} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, padding: '0 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                          </div>
+                          {c.employees_list && c.employees_list.map((emp: any) => (
+                            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '6px 10px', borderRadius: 6, fontSize: 13, marginBottom: 4 }}>
+                              <span>{emp.username}</span>
+                              <button onClick={() => handleRemoveEmployee(c.id, emp.username)} style={{ color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

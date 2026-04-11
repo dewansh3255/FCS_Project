@@ -19,9 +19,27 @@ function PrivateRoute({ children }: { children: JSX.Element }) {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/auth/auth-check/`, { credentials: 'include' })
-      .then(res => setAuthed(res.ok))
-      .catch(() => setAuthed(false));
+    const checkAuth = () => {
+      if (!localStorage.getItem('username')) {
+        setAuthed(false);
+        return;
+      }
+      fetch(`${API_BASE_URL}/api/auth/auth-check/`, { credentials: 'include' })
+        .then(res => setAuthed(res.ok))
+        .catch(() => setAuthed(false));
+    };
+
+    checkAuth();
+
+    // Catch BFCache (Back-Forward Cache) restores
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        checkAuth();
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    
+    return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
 
   if (authed === null) return (

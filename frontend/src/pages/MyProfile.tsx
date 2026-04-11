@@ -406,7 +406,7 @@ export default function MyProfile() {
                 <span className="text-3xl mb-2">&#128196;</span>
                 <span className="text-blue-600 font-semibold text-sm">Click to select a PDF resume</span>
                 <span className="text-blue-400 text-xs mt-1">It will be digitally signed with your key</span>
-                <input type="file" accept=".pdf" className="hidden" onChange={handleFileSelect} />
+                <input type="file" accept=".pdf,.docx" className="hidden" onChange={handleFileSelect} />
               </label>
             ) : (
               <form onSubmit={handleSecureUpload} className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">

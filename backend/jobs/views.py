@@ -1,7 +1,9 @@
 import os
 
 from cryptography.fernet import Fernet
+from django.shortcuts import get_object_or_404
 from django.http import FileResponse, Http404, HttpResponseForbidden
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.files.base import ContentFile
 
@@ -46,7 +48,15 @@ class ResumeUploadView(APIView):
         digital_signature = request.data.get('digital_signature')
         
         if not file:
-            return Response({"detail": "No file provided"}, status=400)
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # File size and type validation
+        if file.size > 5 * 1024 * 1024:
+            return Response({"error": "File size exceeds 5MB limit."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        ext = os.path.splitext(file.name)[1].lower()
+        if ext not in ['.pdf', '.docx']:
+            return Response({"error": "Only PDF and DOCX files are allowed."}, status=status.HTTP_400_BAD_REQUEST)
             
         # --- UPDATE THIS TO SAVE THE SIGNATURE ---
         resume = Resume.objects.create(
@@ -99,10 +109,15 @@ class DownloadResumeView(APIView):
         if basename.endswith('.enc'):
             basename = basename[:-4]
 
+        # determine correct content type
+        content_type = 'application/pdf'
+        if basename.lower().endswith('.docx'):
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
         response = FileResponse(
             ContentFile(decrypted), 
             filename=basename, 
-            content_type='application/pdf' # Tells the browser to display it
+            content_type=content_type 
         )
         return response
 
@@ -145,7 +160,8 @@ class CompanyListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Company.objects.all()
+        user = self.request.user
+        return Company.objects.filter(Q(owner=user) | Q(employees=user)).distinct()
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -158,7 +174,8 @@ class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         obj = super().get_object()
-        # Allow any user to retrieve, but only owner can edit/delete
+        if obj.owner != self.request.user and self.request.user not in obj.employees.all():
+            raise PermissionDenied("You do not have permission to view this company.")
         return obj
 
     def update(self, request, *args, **kwargs):
@@ -177,6 +194,55 @@ class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
         
         create_audit_log('COMPANY_DELETE', request.user, {'company_id': obj.id, 'name': obj.name})
         return super().destroy(request, *args, **kwargs)
+
+class CompanyEmployeeManageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, company_id):
+        # Add a recruiter by username
+        company = get_object_or_404(Company, id=company_id)
+        if company.owner != request.user:
+            raise PermissionDenied("Only the company owner can add recruiters.")
+        
+        username = request.data.get('username')
+        if not username:
+            return Response({"error": "Username is required"}, status=400)
+            
+        User = get_user_model()
+        try:
+            employee = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+            
+        company.employees.add(employee)
+        
+        # Dispatch notification
+        from accounts.models import Notification
+        Notification.objects.create(
+            recipient=employee,
+            sender=request.user,
+            notif_type='COMPANY_ASSIGNED',
+            message=f"You have been added as a recruiter for {company.name}"
+        )
+        
+        return Response({"message": f"{username} added to company"}, status=200)
+        
+    def delete(self, request, company_id):
+        # Remove a recruiter
+        company = get_object_or_404(Company, id=company_id)
+        if company.owner != request.user:
+            raise PermissionDenied("Only the company owner can remove recruiters.")
+            
+        username = request.data.get('username')
+        User = get_user_model()
+        try:
+            employee = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+            
+        company.employees.remove(employee)
+        return Response({"message": f"{username} removed from company"}, status=200)
+
 
 
 class JobListCreateView(generics.ListCreateAPIView):
@@ -221,7 +287,7 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def update(self, request, *args, **kwargs):
         obj = self.get_object()
-        if obj.company.owner != request.user:
+        if obj.company.owner != request.user and request.user not in obj.company.employees.all():
             raise PermissionDenied("You can only update jobs for your company.")
         
         # Get the previous status for audit logging
@@ -238,7 +304,7 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        if obj.company.owner != request.user:
+        if obj.company.owner != request.user and request.user not in obj.company.employees.all():
             raise PermissionDenied("You can only delete jobs for your company.")
         
         create_audit_log('JOB_POSTING_DELETED', request.user, {
@@ -256,10 +322,14 @@ class ApplicationListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'RECRUITER':
-            return Application.objects.filter(job__company__owner=user)
+            return Application.objects.filter(Q(job__company__owner=user) | Q(job__company__employees=user)).distinct()
         return Application.objects.filter(applicant=user)
 
     def perform_create(self, serializer):
+        resume = serializer.validated_data.get('resume')
+        if resume and resume.user != self.request.user:
+            raise PermissionDenied("You can only apply with your own resume.")
+            
         application = serializer.save(applicant=self.request.user)
         create_audit_log('APPLICATION_SUBMITTED', self.request.user, {
             'application_id': application.id,
@@ -276,14 +346,14 @@ class ApplicationDetailView(generics.RetrieveUpdateAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == 'RECRUITER':
-            return Application.objects.filter(job__company__owner=user)
+            return Application.objects.filter(Q(job__company__owner=user) | Q(job__company__employees=user)).distinct()
         return Application.objects.filter(applicant=user)
 
     def update(self, request, *args, **kwargs):
         application = self.get_object()
         
         # Only recruiters can update application status
-        if request.user != application.job.company.owner:
+        if request.user != application.job.company.owner and request.user not in application.job.company.employees.all():
             raise PermissionDenied("You can only update applications for your jobs.")
         
         old_status = application.status
@@ -316,8 +386,8 @@ class JobApplicationsListView(generics.ListAPIView):
         except Job.DoesNotExist:
             return Application.objects.none()
         
-        # Only company owner can see applications
-        if job.company.owner != self.request.user:
+        # Only company owner or delegated employee can see applications
+        if job.company.owner != self.request.user and self.request.user not in job.company.employees.all():
             raise PermissionDenied("You can only view applications for your jobs.")
         
         return Application.objects.filter(job=job).order_by('-applied_at')
@@ -336,8 +406,8 @@ class DownloadApplicationResumeView(APIView):
         except Application.DoesNotExist:
             raise Http404("Application not found")
 
-        # Check that the requester owns the company that posted this job
-        if application.job.company.owner != request.user:
+        # Check that the requester owns the company that posted this job, or is an employee
+        if application.job.company.owner != request.user and request.user not in application.job.company.employees.all():
             return HttpResponseForbidden("You can only download resumes from applicants to your jobs.")
 
         # Check that the application has a resume
@@ -373,9 +443,14 @@ class DownloadApplicationResumeView(APIView):
             'job_id': application.job.id
         })
 
+        # determine correct content type
+        content_type = 'application/pdf'
+        if basename.lower().endswith('.docx'):
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
         response = FileResponse(
             ContentFile(decrypted),
             filename=basename,
-            content_type='application/pdf'
+            content_type=content_type
         )
         return response

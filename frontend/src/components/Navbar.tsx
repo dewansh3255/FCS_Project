@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getNotifications, markNotificationRead, markAllNotificationsRead,
-  respondToConnection,
+  respondToConnection, logoutUser
 } from '../services/api';
 
 interface NavbarProps {
@@ -91,11 +91,18 @@ export default function Navbar({ role, username }: NavbarProps) {
   }, [username]);
 
   // ── Handlers ────────────────────────────────────────────────────────────
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch (err) {
+      console.error("Failed to log out on server, clearing locally:", err);
+    }
     localStorage.removeItem('username');
+    localStorage.removeItem('crypto_key');
     document.cookie = 'access_token=; Max-Age=0; path=/';
     document.cookie = 'refresh_token=; Max-Age=0; path=/';
-    navigate('/login');
+    navigate('/login', { replace: true });
+    window.location.reload(); // Hard flush memory heap immediately
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -145,7 +152,8 @@ export default function Navbar({ role, username }: NavbarProps) {
     { label: 'Admin',        path: '/admin-panel',  roles: ['ADMIN'] },
     { label: 'My Network',   path: '/network-graph',roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
   ];
-  const visible = links.filter(l => !role || l.roles.includes(role));
+  const currentRole = role || 'CANDIDATE';
+  const visible = links.filter(l => l.roles.includes(currentRole));
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
     background: active ? 'rgba(255,255,255,0.15)' : 'transparent',

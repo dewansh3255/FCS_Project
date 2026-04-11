@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { registerUser, getTOTPSetupURI, verifyTOTPCode, uploadKeys } from '../services/api';
 import { generateAndWrapKeys } from '../utils/crypto'; // <--- ADD THIS
+import VirtualKeyboard from '../components/VirtualKeyboard';
 
 export default function Register() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1); // 1 = Form, 2 = 2FA Setup
-  const [userId, setUserId] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [qrUri, setQrUri] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
     username: '', email: '', password: '', phone_number: ''
@@ -23,12 +25,8 @@ export default function Register() {
     setError('');
     try {
       const data = await registerUser(formData);
-      setUserId(data.user_id);
-
-      // Immediately fetch their new QR Code
-      const qrData = await getTOTPSetupURI(data.user_id);
-      setQrUri(qrData.qr_uri);
-
+      setSessionId(data.session_id);
+      setQrUri(data.qr_uri);
       setStep(2); // Move to QR Code screen
     } catch (err: any) {
       setError(err.message);
@@ -41,11 +39,11 @@ export default function Register() {
   const handleVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!userId) return;
+    if (!sessionId) return;
 
     try {
-      // 1. Verify TOTP (This logs the user in and sets the secure HTTP-only cookie!)
-      await verifyTOTPCode(userId, otpCode);
+      // 1. Verify TOTP (This creates the user, logs the user in and sets cookie!)
+      const data = await verifyTOTPCode(sessionId, otpCode);
 
       localStorage.setItem('username', formData.username);
       
@@ -56,10 +54,17 @@ export default function Register() {
       // 3. Upload them to our new endpoint
       await uploadKeys(publicKey, encryptedPrivateKey);
 
-      setSuccess("Account secured! Redirecting to dashboard...");
-      setTimeout(() => navigate('/dashboard'), 2000);
+      if (data.backup_codes && data.backup_codes.length > 0) {
+        setBackupCodes(data.backup_codes);
+        setSuccess("Account secured! Please save your backup codes.");
+        setStep(3); // Move to Backup Codes screen
+      } else {
+        setSuccess("Account secured! Redirecting to dashboard...");
+        setTimeout(() => navigate('/dashboard'), 2000);
+      }
     } catch (err: any) {
-      setError(err.message);
+      setOtpCode(''); // auto-clear on error so keyboard works
+      setError(err.message || 'Verification failed');
     }
   };
 
@@ -101,13 +106,41 @@ export default function Register() {
               <p className="text-xs text-center mt-2 text-gray-500">Scan with Microsoft Authenticator</p>
             </div>
 
-            <input type="text" placeholder="Enter 6-digit OTP" maxLength={6} required
-              className="w-full border p-2 mb-4 rounded text-center tracking-widest text-lg"
-              onChange={e => setOtpCode(e.target.value)} />
+            <input type="text" placeholder="••••••" value={otpCode} readOnly
+              className="w-full border p-2 mb-4 rounded text-center tracking-widest text-2xl font-mono bg-slate-50 outline-none"
+            />
+            <VirtualKeyboard
+              disabled={otpCode.length >= 6}
+              onKeyPress={(key) => setOtpCode(prev => (prev.length < 6 ? prev + key : prev))}
+              onDelete={() => setOtpCode(prev => prev.slice(0, -1))}
+              onClear={() => setOtpCode('')}
+            />
             <button type="submit" className="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700">
               Verify & Complete Registration
             </button>
           </form>
+        )}
+
+        {step === 3 && (
+          <div className="flex flex-col items-center">
+            <h3 className="text-xl font-bold mb-2 text-red-600">⚠️ Save These Codes!</h3>
+            <p className="text-sm text-center text-gray-700 mb-4">
+              If you lose access to your Authenticator app, these are your ONLY way to log back in. They will never be shown again.
+            </p>
+            <div className="w-full bg-slate-50 p-4 rounded border-2 border-dashed border-gray-300 grid grid-cols-2 gap-2 mb-6">
+              {backupCodes.map((code, idx) => (
+                <div key={idx} className="font-mono text-sm tracking-wider text-center font-bold bg-white p-2 border rounded">
+                  {code}
+                </div>
+              ))}
+            </div>
+            <button 
+              onClick={() => navigate('/dashboard')}
+              className="w-full bg-blue-600 text-white font-bold p-3 rounded hover:bg-blue-700 shadow shadow-blue-500/30"
+            >
+              I have saved them. Continue
+            </button>
+          </div>
         )}
       </div>
     </div>

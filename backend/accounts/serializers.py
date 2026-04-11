@@ -6,12 +6,33 @@ from .models import Profile, Message
 
 User = get_user_model()
 
+import re
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'password', 'phone_number')
+
+    def validate_password(self, value):
+        if len(value) <= 8:
+            raise serializers.ValidationError("Password must be greater than 8 characters.")
+        if not re.search(r'[A-Z]', value):
+            raise serializers.ValidationError("Password must contain at least one capital letter.")
+        if not re.search(r'\d', value):
+            raise serializers.ValidationError("Password must contain at least one number.")
+        if not re.search(r'[@$!%*?&#^_-]', value):
+            raise serializers.ValidationError("Password must contain at least one special character.")
+        return value
+
+    def to_internal_value(self, data):
+        # Convert empty strings to None for unique char fields so they don't trigger integrity errors
+        data = data.copy()
+        if 'phone_number' in data and data['phone_number'] == "":
+            data['phone_number'] = None
+        return super().to_internal_value(data)
+
 
     def create(self, validated_data):
         user = User.objects.create_user(

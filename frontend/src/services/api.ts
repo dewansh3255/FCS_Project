@@ -17,6 +17,10 @@ const onRereshed = (success: boolean) => {
 
 export const secureFetch = async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
     options.credentials = options.credentials || "include";
+    options.headers = {
+        ...options.headers,
+        'X-Requested-With': 'XMLHttpRequest'
+    };
     let response = await fetch(url, options);
 
     const urlStr = url.toString();
@@ -27,7 +31,8 @@ export const secureFetch = async (url: string | URL | globalThis.Request, option
             try {
                 const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
                     method: 'POST',
-                    credentials: 'include'
+                    credentials: 'include',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 
                 if (refreshResponse.ok) {
@@ -66,6 +71,7 @@ export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string)
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
       },
       credentials: "include",
       body: JSON.stringify({
@@ -104,7 +110,9 @@ export const registerUser = async (userData: any) => {
     });
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.username?.[0] || errorData.email?.[0] || "Registration failed");
+      const firstError = Object.values(errorData)[0];
+      const errorMessage = Array.isArray(firstError) ? firstError[0] : (typeof firstError === 'string' ? firstError : JSON.stringify(errorData));
+      throw new Error(errorMessage as string || "Registration failed");
     }
     return await response.json();
   } catch (error) {
@@ -123,11 +131,33 @@ export const loginUser = async (credentials: any) => {
     });
     if (!response.ok) {
       const errorData = await response.json();
+      if (response.status === 403 && errorData.needs_setup) {
+        return { isError: true, ...errorData };
+      }
+      // Return lockout data as a value (not a throw) so Login.tsx can show countdown
+      if (response.status === 429 && errorData.locked) {
+        return { locked: true, ...errorData };
+      }
       throw new Error(errorData.error || "Login failed");
     }
     return await response.json();
   } catch (error) {
     console.error("Login Error:", error);
+    throw error;
+  }
+};
+
+export const logoutUser = async () => {
+  try {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/logout/`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+    if (!response.ok) throw new Error("Logout failed");
+    return true;
+  } catch (error) {
+    console.error("Logout Error:", error);
     throw error;
   }
 };
@@ -147,18 +177,27 @@ export const getTOTPSetupURI = async (userId: number) => {
   }
 };
 
-// Update verifyTOTPCode to accept userId and code:
-export const verifyTOTPCode = async (userId: number, code: string) => {
+// verifyTOTPCode: accepts userId/sessionId, code, and optional username for lockout keying
+export const verifyTOTPCode = async (authId: string | number, code: string, username?: string) => {
   try {
+    const payload = typeof authId === 'string'
+      ? { session_id: authId, code }
+      : { user_id: authId, code, ...(username ? { username } : {}) };
+
     const response = await secureFetch(`${API_BASE_URL}/api/auth/totp/verify/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ user_id: userId, code }),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || "Verification failed");
+      // Attach structured lockout fields so Login.tsx can trigger countdown without string-matching
+      const err = new Error(errorData.error || "Verification failed") as any;
+      err.locked = errorData.locked ?? false;
+      err.seconds_remaining = errorData.seconds_remaining ?? 0;
+      err.attempts_remaining = errorData.attempts_remaining ?? null;
+      throw err;
     }
     return await response.json();
   } catch (error) {
@@ -930,4 +969,32 @@ export const verifyEmailOtp = async (otp: string) => {
     throw new Error(errorData.error || "Failed to verify OTP");
   }
   return res.json();
+};
+
+export const addCompanyEmployee = async (companyId: number, username: string) => {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/${companyId}/employees/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to add employee');
+  }
+  return response.json();
+};
+
+export const removeCompanyEmployee = async (companyId: number, username: string) => {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/${companyId}/employees/`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ username }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to remove employee');
+  }
+  return response.json();
 };
