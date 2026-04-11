@@ -40,6 +40,15 @@ from .views import (
     GenerateBackupCodesView,
     ListBackupCodesView,
     VerifyBackupCodeView,
+    # Member 4: Admin Dashboard
+    AdminUserListView,
+    AdminUserSuspendView,
+    AdminUserDeleteView,
+    AdminPostListView,
+    AdminPostDeleteView,
+    CreateReportView,
+    AdminReportListView,
+    AdminReportResolveView,
 )
 
 urlpatterns = [
@@ -109,4 +118,14 @@ urlpatterns = [
     path('backup-codes/', ListBackupCodesView.as_view(), name='backup_codes_list'),
     path('backup-codes/generate/', GenerateBackupCodesView.as_view(), name='backup_codes_generate'),
     path('backup-codes/verify/', VerifyBackupCodeView.as_view(), name='backup_codes_verify'),
+
+    # Member 4: Admin Dashboard
+    path('admin/users/', AdminUserListView.as_view(), name='admin_users'),
+    path('admin/users/<int:user_id>/suspend/', AdminUserSuspendView.as_view(), name='admin_user_suspend'),
+    path('admin/users/<int:user_id>/delete/', AdminUserDeleteView.as_view(), name='admin_user_delete'),
+    path('admin/posts/', AdminPostListView.as_view(), name='admin_posts'),
+    path('admin/posts/<int:post_id>/', AdminPostDeleteView.as_view(), name='admin_post_delete'),
+    path('reports/', CreateReportView.as_view(), name='create_report'),
+    path('admin/reports/', AdminReportListView.as_view(), name='admin_reports'),
+    path('admin/reports/<int:report_id>/', AdminReportResolveView.as_view(), name='admin_report_resolve'),
 ]

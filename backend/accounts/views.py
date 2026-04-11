@@ -1257,3 +1257,127 @@ class VerifyBackupCodeView(APIView):
         response.set_cookie('refresh_token', str(refresh),
                             httponly=True, secure=True, samesite='Lax')
         return response
+
+from .models import Report
+
+# ====================================================================
+# MEMBER 4: ADMIN ENDPOINTS
+# ====================================================================
+
+class AdminUserListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        users = User.objects.all().order_by('-date_joined')
+        data = [{
+            'id': u.id, 'username': u.username, 'email': u.email, 
+            'role': u.role, 'is_active': u.is_active, 
+            'is_verified': u.is_verified, 'date_joined': u.date_joined
+        } for u in users]
+        return Response(data)
+
+class AdminUserSuspendView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, user_id):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        user = get_object_or_404(User, id=user_id)
+        if user.is_superuser or user.role == 'ADMIN':
+            return Response({'error': 'Cannot suspend admins'}, status=status.HTTP_400_BAD_REQUEST)
+        user.is_active = not user.is_active
+        user.save()
+        create_audit_log('USER_SUSPEND_TOGGLED', request.user, {'target_user': user.username, 'is_active': user.is_active})
+        return Response({'message': 'Success', 'is_active': user.is_active})
+
+class AdminUserDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def delete(self, request, user_id):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        user = get_object_or_404(User, id=user_id)
+        if user.is_superuser or user.role == 'ADMIN':
+            return Response({'error': 'Cannot delete admins'}, status=status.HTTP_400_BAD_REQUEST)
+        username = user.username
+        user.delete()
+        create_audit_log('ADMIN_DELETED_USER', request.user, {'target_user': username})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class AdminPostListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        posts = Post.objects.all().order_by('-created_at').select_related('author')
+        data = [{
+            'id': p.id, 'author_username': p.author.username, 'content': p.content, 'created_at': p.created_at
+        } for p in posts]
+        return Response(data)
+
+class AdminPostDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def delete(self, request, post_id):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        post = get_object_or_404(Post, id=post_id)
+        post.delete()
+        create_audit_log('ADMIN_DELETED_POST', request.user, {'post_id': post_id})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class CreateReportView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        reported_user_id = request.data.get('reported_user_id')
+        reported_post_id = request.data.get('reported_post_id')
+        reason = request.data.get('reason', '').strip()
+        
+        if not reason:
+            return Response({'error': 'Reason is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        reported_user = User.objects.filter(id=reported_user_id).first() if reported_user_id else None
+        reported_post = Post.objects.filter(id=reported_post_id).first() if reported_post_id else None
+        
+        Report.objects.create(
+            reporter=request.user,
+            reported_user=reported_user,
+            reported_post=reported_post,
+            reason=reason
+        )
+        return Response({'message': 'Report submitted'}, status=status.HTTP_201_CREATED)
+
+class AdminReportListView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        reports = Report.objects.all().order_by('-created_at').select_related('reporter', 'reported_user', 'reported_post')
+        data = [{
+            'id': r.id, 
+            'reporter_username': r.reporter.username,
+            'reported_user': r.reported_user.username if r.reported_user else None,
+            'reported_post_content': r.reported_post.content if r.reported_post else None,
+            'reason': r.reason, 
+            'is_resolved': r.is_resolved,
+            'created_at': r.created_at
+        } for r in reports]
+        return Response(data)
+
+class AdminReportResolveView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, report_id):
+        if request.user.role != 'ADMIN':
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        report = get_object_or_404(Report, id=report_id)
+        report.is_resolved = True
+        report.save()
+        create_audit_log('ADMIN_RESOLVED_REPORT', request.user, {'report_id': report.id})
+        return Response({'message': 'Resolved'})
+

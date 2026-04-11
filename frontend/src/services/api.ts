@@ -1,11 +1,68 @@
 // src/services/api.ts
 
+
 export const API_BASE_URL = ""; // Base URL for Django API
+
+let isRefreshing = false;
+let refreshSubscribers: ((isSuccessful: boolean) => void)[] = [];
+
+const subscribeTokenRefresh = (cb: (isSuccessful: boolean) => void) => {
+    refreshSubscribers.push(cb);
+}
+
+const onRereshed = (success: boolean) => {
+    refreshSubscribers.forEach(cb => cb(success));
+    refreshSubscribers = [];
+}
+
+export const secureFetch = async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
+    options.credentials = options.credentials || "include";
+    let response = await fetch(url, options);
+
+    const urlStr = url.toString();
+    const tokenPaths = ['/login/', '/register/', '/totp/', '/token/refresh/'];
+    if (response.status === 401 && !tokenPaths.some(p => urlStr.includes(p))) {
+        if (!isRefreshing) {
+            isRefreshing = true;
+            try {
+                const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (refreshResponse.ok) {
+                    onRereshed(true);
+                    response = await fetch(url, options);
+                } else {
+                    onRereshed(false);
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
+                }
+            } catch (err) {
+                onRereshed(false);
+            } finally {
+                isRefreshing = false;
+            }
+        } else {
+            return new Promise((resolve, reject) => {
+                subscribeTokenRefresh((success) => {
+                    if (success) {
+                        resolve(fetch(url, options));
+                    } else {
+                        reject(new Error('Token refresh failed'));
+                    }
+                });
+            });
+        }
+    }
+    return response;
+};
 
 export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string) => {
   try {
     // FIXED URL: Matches your Django structure 'api/auth/keys/upload/'
-    const response = await fetch(`${API_BASE_URL}/api/auth/keys/upload/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/keys/upload/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -39,7 +96,7 @@ export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string)
 
 export const registerUser = async (userData: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -58,7 +115,7 @@ export const registerUser = async (userData: any) => {
 
 export const loginUser = async (credentials: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/login/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -78,7 +135,7 @@ export const loginUser = async (credentials: any) => {
 // Also update getTOTPSetupURI to accept a userId:
 export const getTOTPSetupURI = async (userId: number) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/totp/generate/${userId}/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/totp/generate/${userId}/`, {
       method: "GET",
       credentials: "include",
     });
@@ -93,7 +150,7 @@ export const getTOTPSetupURI = async (userId: number) => {
 // Update verifyTOTPCode to accept userId and code:
 export const verifyTOTPCode = async (userId: number, code: string) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/totp/verify/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/totp/verify/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -114,7 +171,7 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
 // export const uploadResume = async (file: File) => {
 //   const form = new FormData();
 //   form.append('file', file);
-//   const response = await fetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
+//   const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
 //     method: 'POST',
 //     credentials: 'include',
 //     body: form,
@@ -127,7 +184,7 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
 // };
 
 // export const listResumes = async () => {
-//   const response = await fetch(`${API_BASE_URL}/api/jobs/resume/`, {
+//   const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/`, {
 //     method: 'GET',
 //     credentials: 'include',
 //   });
@@ -141,7 +198,7 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
 //   `${API_BASE_URL}/api/jobs/resume/${id}/download/`;
 
 // export const deleteResume = async (id: number) => {
-//   const response = await fetch(`${API_BASE_URL}/api/jobs/resume/${id}/`, {
+//   const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/${id}/`, {
 //     method: 'DELETE',
 //     credentials: 'include',
 //   });
@@ -154,7 +211,7 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
 
 // --- PROFILE API ---
 // export const updateMyProfile = async (profileData: any) => {
-//   const response = await fetch(`${API_BASE_URL}/api/auth/profile/me/`, {
+//   const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/me/`, {
 //     method: "PATCH", // PATCH allows partial updates
 //     headers: { "Content-Type": "application/json" },
 //     credentials: "include",
@@ -167,7 +224,7 @@ export const verifyTOTPCode = async (userId: number, code: string) => {
 // --- RESUME APIs ---
 // Assuming your jobs urls are mounted at /api/jobs/ in backend/core/urls.py
 export const getMyResumes = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/`, {
     method: "GET",
     credentials: "include",
   });
@@ -182,7 +239,7 @@ export const uploadResume = async (file: File, digitalSignature: string) => {
   // send sigrnature as part of form data to backend for verification
   formData.append('digital_signature', digitalSignature);
 
-  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/upload/`, {
     method: 'POST',
     body: formData,
     credentials: 'include',
@@ -197,7 +254,7 @@ export const uploadResume = async (file: File, digitalSignature: string) => {
 };
 
 export const deleteResume = async (id: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/resume/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/resume/${id}/`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -213,7 +270,7 @@ export const downloadResumeUrl = (id: number) => {
 // --- PROFILE APIs (Missing from your file) ---
 
 export const getMyProfile = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile/me/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/me/`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -227,7 +284,7 @@ export const getMyProfile = async () => {
 };
 
 export const updateMyProfile = async (profileData: any) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile/me/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/me/`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -242,7 +299,7 @@ export const updateMyProfile = async (profileData: any) => {
 
 // 1. Get the list of available users to chat with
 export const getUsersList = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/users/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/users/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch users');
@@ -251,7 +308,7 @@ export const getUsersList = async () => {
 
 // 2. Fetch a specific user's RSA Public Key
 export const getPublicKey = async (username: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/keys/${username}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/keys/${username}/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch public key');
@@ -260,7 +317,7 @@ export const getPublicKey = async (username: string) => {
 
 // 3. Send an encrypted message
 export const sendEncryptedMessage = async (recipientId: number, encryptedContent: string, encryptedKey: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/messages/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/messages/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -276,7 +333,7 @@ export const sendEncryptedMessage = async (recipientId: number, encryptedContent
 
 // 4. Fetch your encrypted inbox
 export const getMessages = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/messages/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/messages/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch messages');
@@ -284,7 +341,7 @@ export const getMessages = async () => {
 };
 
 export const getMyKeys = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/keys/me/`, { credentials: 'include' });
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/keys/me/`, { credentials: 'include' });
   if (!response.ok) throw new Error('Failed to fetch your keys');
   return response.json();
 };
@@ -295,7 +352,7 @@ export const getJobs = async (params?: { q?: string; job_type?: string; location
   if (params?.q) query.append('q', params.q);
   if (params?.job_type) query.append('job_type', params.job_type);
   if (params?.location) query.append('location', params.location);
-  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/?${query.toString()}`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/jobs/?${query.toString()}`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch jobs');
@@ -303,7 +360,7 @@ export const getJobs = async (params?: { q?: string; job_type?: string; location
 };
 
 export const getJob = async (id: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch job');
@@ -311,7 +368,7 @@ export const getJob = async (id: number) => {
 };
 
 export const createJob = async (data: any) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/jobs/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -322,7 +379,7 @@ export const createJob = async (data: any) => {
 };
 
 export const updateJob = async (id: number, data: any) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -333,7 +390,7 @@ export const updateJob = async (id: number, data: any) => {
 };
 
 export const deleteJob = async (id: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/jobs/${id}/`, {
     method: 'DELETE',
     credentials: 'include',
   });
@@ -342,7 +399,7 @@ export const deleteJob = async (id: number) => {
 
 // --- COMPANIES API ---
 export const getCompanies = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch companies');
@@ -350,7 +407,7 @@ export const getCompanies = async () => {
 };
 
 export const createCompany = async (data: any) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -361,7 +418,7 @@ export const createCompany = async (data: any) => {
 };
 
 export const updateCompany = async (id: number, data: any) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/companies/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/${id}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -373,7 +430,7 @@ export const updateCompany = async (id: number, data: any) => {
 
 // --- APPLICATIONS API ---
 export const getApplications = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/applications/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch applications');
@@ -381,7 +438,7 @@ export const getApplications = async () => {
 };
 
 export const applyToJob = async (jobId: number, resumeId: number | null, coverNote: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/applications/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -395,7 +452,7 @@ export const applyToJob = async (jobId: number, resumeId: number | null, coverNo
 };
 
 export const updateApplicationStatus = async (id: number, status: string, recruiterNotes?: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/${id}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/applications/${id}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -409,7 +466,7 @@ export const downloadApplicationResume = (applicationId: number) =>
   `${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`;
 
 export const getJobApplicationResume = async (applicationId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`, {
     credentials: 'include',
   });
   if (!response.ok) {
@@ -421,7 +478,7 @@ export const getJobApplicationResume = async (applicationId: number) => {
 
 // --- AUDIT LOG API ---
 export const getAuditLogs = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/audit-logs/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/audit-logs/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch audit logs');
@@ -430,7 +487,7 @@ export const getAuditLogs = async () => {
 
 // --- USER ROLE API ---
 export const changeUserRole = async (newRole: 'CANDIDATE' | 'RECRUITER', totpCode: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/role/change/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/role/change/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -446,7 +503,7 @@ export const changeUserRole = async (newRole: 'CANDIDATE' | 'RECRUITER', totpCod
 // --- GROUP CHAT APIs ---
 
 export const getMyGroups = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
   });
@@ -455,7 +512,7 @@ export const getMyGroups = async () => {
 };
 
 export const createGroup = async (name: string, members: {user_id: number, encrypted_key: string}[]) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -466,7 +523,7 @@ export const createGroup = async (name: string, members: {user_id: number, encry
 };
 
 export const fetchGroupMessages = async (groupId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/messages/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/messages/`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
   });
@@ -475,7 +532,7 @@ export const fetchGroupMessages = async (groupId: number) => {
 };
 
 export const sendGroupMessage = async (groupId: number, encryptedContent: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/messages/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/messages/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -488,7 +545,7 @@ export const sendGroupMessage = async (groupId: number, encryptedContent: string
 // --- GROUP MANAGEMENT APIs ---
 
 export const addGroupMember = async (groupId: number, userId: number, encryptedKey: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -499,7 +556,7 @@ export const addGroupMember = async (groupId: number, userId: number, encryptedK
 };
 
 export const removeGroupMember = async (groupId: number, userId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -509,7 +566,7 @@ export const removeGroupMember = async (groupId: number, userId: number) => {
 };
 
 export const promoteGroupMember = async (groupId: number, userId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -519,7 +576,7 @@ export const promoteGroupMember = async (groupId: number, userId: number) => {
 };
 
 export const deleteGroup = async (groupId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/groups/${groupId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -535,7 +592,7 @@ export const deleteGroup = async (groupId: number) => {
 
 /** Search users by username or headline (min 2 chars) */
 export const searchUsers = async (q: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/users/search/?q=${encodeURIComponent(q)}`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/users/search/?q=${encodeURIComponent(q)}`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to search users');
@@ -544,7 +601,7 @@ export const searchUsers = async (q: string) => {
 
 /** Fetch any user's public profile (privacy-filtered by backend) */
 export const getPublicProfile = async (username: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile/${username}/public/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/${username}/public/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Profile not found');
@@ -553,7 +610,7 @@ export const getPublicProfile = async (username: string) => {
 
 /** Get my connections + pending requests */
 export const getMyConnections = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch connections');
@@ -562,7 +619,7 @@ export const getMyConnections = async () => {
 
 /** Send a connection request to a user */
 export const sendConnectionRequest = async (username: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/send/${username}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/send/${username}/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -576,7 +633,7 @@ export const sendConnectionRequest = async (username: string) => {
 
 /** Accept or reject a pending connection request */
 export const respondToConnection = async (connectionId: number, action: 'ACCEPT' | 'REJECT') => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/${connectionId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/${connectionId}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -588,7 +645,7 @@ export const respondToConnection = async (connectionId: number, action: 'ACCEPT'
 
 /** Remove an accepted connection */
 export const removeConnection = async (connectionId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/${connectionId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/${connectionId}/`, {
     method: 'DELETE',
     credentials: 'include',
   });
@@ -598,7 +655,7 @@ export const removeConnection = async (connectionId: number) => {
 
 /** Get the social feed (posts from connections + own) */
 export const getFeed = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/feed/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/feed/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch feed');
@@ -607,7 +664,7 @@ export const getFeed = async () => {
 
 /** Create a new post */
 export const createPost = async (content: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/feed/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/feed/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -619,7 +676,7 @@ export const createPost = async (content: string) => {
 
 /** Get who recently viewed my profile */
 export const getMyProfileViewers = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile/me/viewers/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/me/viewers/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch viewers');
@@ -628,7 +685,7 @@ export const getMyProfileViewers = async () => {
 
 /** Get notifications + unread count (polls every 15s in Navbar) */
 export const getNotifications = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/notifications/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/notifications/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch notifications');
@@ -637,7 +694,7 @@ export const getNotifications = async () => {
 
 /** Mark a single notification as read */
 export const markNotificationRead = async (id: number) => {
-  await fetch(`${API_BASE_URL}/api/auth/notifications/${id}/read/`, {
+  await secureFetch(`${API_BASE_URL}/api/auth/notifications/${id}/read/`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -645,7 +702,7 @@ export const markNotificationRead = async (id: number) => {
 
 /** Mark all notifications as read */
 export const markAllNotificationsRead = async () => {
-  await fetch(`${API_BASE_URL}/api/auth/notifications/read-all/`, {
+  await secureFetch(`${API_BASE_URL}/api/auth/notifications/read-all/`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -653,7 +710,7 @@ export const markAllNotificationsRead = async () => {
 
 /** Get 2nd-degree connection suggestions (BFS, sorted by mutual count) */
 export const getConnectionSuggestions = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/suggestions/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/suggestions/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch suggestions');
@@ -662,7 +719,7 @@ export const getConnectionSuggestions = async () => {
 
 /** Get raw graph data: nodes + edges for the network visualisation */
 export const getNetworkGraph = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/connections/graph/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/connections/graph/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch graph');
@@ -673,7 +730,7 @@ export const getNetworkGraph = async () => {
 export const uploadProfilePicture = async (file: File) => {
   const form = new FormData();
   form.append('picture', file);
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile/me/picture/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/profile/me/picture/`, {
     method: 'POST',
     credentials: 'include',
     body: form,
@@ -691,7 +748,7 @@ export const uploadProfilePicture = async (file: File) => {
 
 /** Delete a post by ID (author only) */
 export const deletePost = async (postId: number) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/feed/${postId}/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/feed/${postId}/`, {
     method: 'DELETE',
     credentials: 'include',
   });
@@ -707,7 +764,7 @@ export const deletePost = async (postId: number) => {
  * Requires old password, new password, and live authenticator code.
  */
 export const changePassword = async (oldPassword: string, newPassword: string, totpCode: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/account/password-change/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/account/password-change/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -724,7 +781,7 @@ export const changePassword = async (oldPassword: string, newPassword: string, t
  * MEMBER 2: Permanently delete account with password + TOTP verification.
  */
 export const deleteAccount = async (password: string, totpCode: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/account/delete/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/account/delete/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -746,7 +803,7 @@ export const deleteAccount = async (password: string, totpCode: string) => {
  * Returns plaintext codes — shown only once.
  */
 export const generateBackupCodes = async (totpCode: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/backup-codes/generate/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/backup-codes/generate/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -761,7 +818,7 @@ export const generateBackupCodes = async (totpCode: string) => {
 
 /** MEMBER 3: Get remaining unused backup code count */
 export const getBackupCodes = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/backup-codes/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/backup-codes/`, {
     credentials: 'include',
   });
   if (!response.ok) throw new Error('Failed to fetch backup code info');
@@ -773,7 +830,7 @@ export const getBackupCodes = async () => {
  * Used during the login flow when user has lost access to their authenticator.
  */
 export const verifyBackupCode = async (userId: number, backupCode: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/backup-codes/verify/`, {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/backup-codes/verify/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -784,4 +841,61 @@ export const verifyBackupCode = async (userId: number, backupCode: string) => {
     throw new Error(err?.error || 'Invalid backup code');
   }
   return response.json();
-};
+};
+
+// ====================================================================
+// MEMBER 4: ADMIN ENDPOINTS
+// ====================================================================
+
+export const getAdminUsers = async () => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/users/`);
+  if (!res.ok) throw new Error("Failed to load users");
+  return res.json();
+};
+
+export const toggleUserSuspend = async (userId: number) => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/users/${userId}/suspend/`, { method: 'POST' });
+  if (!res.ok) throw new Error("Failed to suspend user");
+  return res.json();
+};
+
+export const deleteUser = async (userId: number) => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/users/${userId}/delete/`, { method: 'DELETE' });
+  if (!res.ok) throw new Error("Failed to delete user");
+};
+
+export const getAdminPosts = async () => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/posts/`);
+  if (!res.ok) throw new Error("Failed to load posts");
+  return res.json();
+};
+
+export const deleteAdminPost = async (postId: number) => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/posts/${postId}/`, { method: 'DELETE' });
+  if (!res.ok) throw new Error("Failed to delete post");
+};
+
+export const submitReport = async (data: { reported_user_id?: number, reported_post_id?: number, reason: string }) => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/reports/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(()=> ({}));
+    throw new Error(d.error || "Failed to submit report");
+  }
+  return res.json();
+};
+
+export const getAdminReports = async () => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/reports/`);
+  if (!res.ok) throw new Error("Failed to load reports");
+  return res.json();
+};
+
+export const resolveAdminReport = async (reportId: number) => {
+  const res = await secureFetch(`${API_BASE_URL}/api/auth/admin/reports/${reportId}/`, { method: 'PATCH' });
+  if (!res.ok) throw new Error("Failed to resolve report");
+  return res.json();
+};

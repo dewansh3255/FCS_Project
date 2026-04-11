@@ -7,6 +7,7 @@ import {
   sendConnectionRequest,
   respondToConnection,
   removeConnection,
+  submitReport,
 } from '../services/api';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -42,6 +43,10 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  const [reportReason, setReportReason] = useState('');
+  const [showReport, setShowReport] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -92,6 +97,22 @@ export default function ProfilePage() {
       setProfile((p: any) => ({ ...p, connection_status: 'none', connection_id: null }));
     } catch (e: any) { alert(e.message); }
     finally { setActionLoading(false); }
+  };
+
+  const handleReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportReason.trim()) return;
+    setReporting(true);
+    try {
+      await submitReport({ reported_user_id: profile.id, reason: reportReason });
+      alert("Report submitted to Admins.");
+      setShowReport(false);
+      setReportReason('');
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setReporting(false);
+    }
   };
 
   // ── Render: Loading / Error ───────────────────────────────────────────
@@ -203,6 +224,10 @@ export default function ProfilePage() {
                       </button>
                     </div>
                   )}
+
+                  <button onClick={() => setShowReport(true)} className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 transition ml-auto">
+                    ⚠️ Report
+                  </button>
                 </div>
               )}
 
@@ -266,6 +291,35 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Report Modal */}
+      {showReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-bold mb-4 text-slate-800">Report User</h2>
+            <form onSubmit={handleReport}>
+              <textarea
+                value={reportReason}
+                onChange={e => setReportReason(e.target.value)}
+                autoFocus
+                required
+                placeholder="Please describe why you are reporting this user..."
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-sm"
+                rows={4}
+              />
+              <div className="flex justify-end gap-3">
+                <button type="button" disabled={reporting} onClick={() => {setShowReport(false); setReportReason('');}} className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-800">
+                  Cancel
+                </button>
+                <button type="submit" disabled={reporting || !reportReason.trim()} className="px-5 py-2 bg-red-600 text-white font-semibold text-sm rounded-xl hover:bg-red-700 disabled:opacity-50">
+                  {reporting ? 'Submitting...' : 'Submit Report'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
