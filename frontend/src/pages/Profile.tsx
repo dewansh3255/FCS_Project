@@ -148,7 +148,6 @@ export default function ProfilePage() {
     : [];
 
   // ── Render: Full Profile ──────────────────────────────────────────────
-  console.log("PUBLIC PROFILE DATA:", profile);
 
   return (
     <div className="min-h-screen bg-slate-50">

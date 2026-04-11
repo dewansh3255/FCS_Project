@@ -140,12 +140,16 @@ EMAIL_HOST = 'smtp.gmail.com'
 # Change from 587 to 465
 EMAIL_PORT = 465 
 
+
+
 # Change from USE_TLS to USE_SSL
 EMAIL_USE_TLS = False 
 EMAIL_USE_SSL = True
 # Read the credentials safely from the environment
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER') 
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # --- CORS SETTINGS (Allow React to talk to Django) ---
 CORS_ALLOW_ALL_ORIGINS = True # For dev only. In prod, restrict to domain.
