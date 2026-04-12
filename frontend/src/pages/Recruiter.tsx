@@ -440,6 +440,14 @@ export default function Recruiter() {
                           style={{ ...inputStyle, flex: 1, minWidth: 180, padding: '6px 12px' }}
                         />
                         <button
+                          onClick={() => document.dispatchEvent(new CustomEvent('openChat', { detail: app.applicant_username }))}
+                          style={{
+                            background: '#8b5cf6', color: '#fff', border: 'none',
+                            borderRadius: 8, padding: '6px 16px', fontSize: 13,
+                            fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >Message</button>
+                        <button
                           onClick={() => handleStatusChange(app.id, app.status)}
                           style={{
                             background: '#10b981', color: '#fff', border: 'none',

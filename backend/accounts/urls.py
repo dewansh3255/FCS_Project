@@ -63,7 +63,7 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # TOTP & 2FA
-    path('totp/generate/<int:user_id>/', GenerateTOTPURIView.as_view(), name='generate_totp'),
+    path('totp/generate/', GenerateTOTPURIView.as_view(), name='generate_totp'),
     path('totp/verify/', VerifyTOTPView.as_view(), name='verify_totp'),
 
     # E2EE Crypto Keys
@@ -96,7 +96,7 @@ urlpatterns = [
     path('groups/', GroupListCreateView.as_view(), name='group-list-create'),
     path('groups/<int:group_id>/', GroupDetailView.as_view(), name='group-detail'),
     path('groups/<int:group_id>/members/', GroupMemberManageView.as_view(), name='group-add-member'),
-    path('groups/<int:group_id>/members/<int:user_id>/', GroupMemberManageView.as_view(), name='group-manage-member'),
+    path('groups/<int:group_id>/members/<str:username>/', GroupMemberManageView.as_view(), name='group-manage-member'),
     path('groups/<int:group_id>/rotate/', GroupKeyRotateView.as_view(), name='group-rotate-keys'),
     path('groups/<int:group_id>/messages/', GroupMessageListCreateView.as_view(), name='group-messages'),
 

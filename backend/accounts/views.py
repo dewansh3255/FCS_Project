@@ -197,11 +197,8 @@ class GenerateTOTPURIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, user_id):
-        if request.user.id != user_id:
-            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-            
-        user = get_object_or_404(User, id=user_id)
+    def get(self, request):
+        user = request.user
 
         totp = pyotp.TOTP(user.totp_secret)
         uri = totp.provisioning_uri(
@@ -436,12 +433,28 @@ class UserListView(APIView):
             status='ACCEPTED'
         )
         
-        connected_ids = []
+        connected_ids = set()
         for conn in connections:
             if conn.sender_id == user.id:
-                connected_ids.append(conn.receiver_id)
+                connected_ids.add(conn.receiver_id)
             else:
-                connected_ids.append(conn.sender_id)
+                connected_ids.add(conn.sender_id)
+
+        # Include users with prior message history
+        messages = Message.objects.filter(Q(sender=user) | Q(recipient=user))
+        for msg in messages:
+            if msg.sender_id == user.id:
+                connected_ids.add(msg.recipient_id)
+            else:
+                connected_ids.add(msg.sender_id)
+
+        # Include job applicants if the user is a recruiter
+        from jobs.models import Application
+        apps = Application.objects.filter(
+            Q(job__company__owner=user) | Q(job__company__employees=user)
+        )
+        for app in apps:
+            connected_ids.add(app.applicant_id)
 
         users = User.objects.filter(id__in=connected_ids).values('id', 'username')
         return Response(list(users), status=status.HTTP_200_OK)
@@ -629,13 +642,13 @@ class GroupMemberManageView(APIView):
         if requester_membership.role not in ['owner', 'admin']:
             return Response({"error": "Admin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
-        new_user_id = request.data.get('user_id')
+        new_username = request.data.get('username')
         encrypted_key = request.data.get('encrypted_key')
 
-        if not new_user_id or not encrypted_key:
-            return Response({"error": "user_id and encrypted_key are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not new_username or not encrypted_key:
+            return Response({"error": "username and encrypted_key are required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        new_user = get_object_or_404(User, id=new_user_id)
+        new_user = get_object_or_404(User, username=new_username)
 
         member, created = GroupMember.objects.get_or_create(
             user=new_user,
@@ -648,7 +661,7 @@ class GroupMemberManageView(APIView):
 
         return Response({"message": f"{new_user.username} added to the group."}, status=status.HTTP_201_CREATED)
 
-    def patch(self, request, group_id, user_id):
+    def patch(self, request, group_id, username):
         # Promoting a member to Admin
         group = get_object_or_404(ChatGroup, id=group_id)
         requester_membership = self._get_requester_membership(
@@ -658,13 +671,13 @@ class GroupMemberManageView(APIView):
             return Response({"error": "Only the owner can promote members."}, status=status.HTTP_403_FORBIDDEN)
 
         target_membership = get_object_or_404(
-            GroupMember, group=group, user_id=user_id)
+            GroupMember, group=group, user__username=username)
         target_membership.role = 'admin'
         target_membership.save()
 
         return Response({"message": f"{target_membership.user.username} is now an admin."}, status=status.HTTP_200_OK)
 
-    def delete(self, request, group_id, user_id):
+    def delete(self, request, group_id, username):
         # Removing a member
         group = get_object_or_404(ChatGroup, id=group_id)
         requester_membership = self._get_requester_membership(
@@ -674,7 +687,7 @@ class GroupMemberManageView(APIView):
             return Response({"error": "Admin privileges required."}, status=status.HTTP_403_FORBIDDEN)
 
         target_membership = get_object_or_404(
-            GroupMember, group=group, user_id=user_id)
+            GroupMember, group=group, user__username=username)
 
         if target_membership.role == 'owner':
             return Response({"error": "Cannot remove the group owner."}, status=status.HTTP_400_BAD_REQUEST)
@@ -709,11 +722,11 @@ class GroupKeyRotateView(APIView):
 
         updated_count = 0
         for item in keys_data:
-            user_id = item.get('user_id')
+            uname = item.get('username')
             encrypted_key = item.get('encrypted_key')
-            if user_id and encrypted_key:
+            if uname and encrypted_key:
                 # Update the member's encrypted key
-                updated = GroupMember.objects.filter(group=group, user_id=user_id).update(encrypted_group_key=encrypted_key)
+                updated = GroupMember.objects.filter(group=group, user__username=uname).update(encrypted_group_key=encrypted_key)
                 updated_count += updated
 
         return Response({"message": f"Successfully rotated keys for {updated_count} members."}, status=status.HTTP_200_OK)
@@ -835,9 +848,13 @@ class PublicProfileView(APIView):
         target_user = get_object_or_404(User, username=username)
         profile = get_object_or_404(Profile, user=target_user)
 
-        # Log the view — never count self-views
+        # Log the view — never count self-views, and respect viewer's privacy setting
         if request.user != target_user:
-            ProfileView.objects.create(viewer=request.user, viewed_user=target_user)
+            try:
+                if request.user.profile.is_view_history_public:
+                    ProfileView.objects.create(viewer=request.user, viewed_user=target_user)
+            except Exception:
+                pass
 
         serializer = ProfileSerializer(profile, context={'request': request})
         data = dict(serializer.data)
@@ -865,6 +882,17 @@ class PublicProfileView(APIView):
         # View count only visible to profile owner
         if request.user == target_user:
             data['view_count'] = ProfileView.objects.filter(viewed_user=target_user).count()
+
+        # Append Posts for the public profile feed
+        posts = Post.objects.filter(author=target_user).order_by('-created_at')[:20]
+        data['posts'] = [{
+            'id': p.id,
+            'author_username': p.author.username,
+            'author_role': p.author.role,
+            'content': p.content,
+            'created_at': p.created_at,
+            'is_mine': False,
+        } for p in posts]
 
         return Response(data)
 

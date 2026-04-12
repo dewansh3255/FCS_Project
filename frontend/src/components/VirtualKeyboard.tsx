@@ -49,7 +49,7 @@ const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
         {/* Bottom Row: Clear, Last Digit, Delete */}
         <button
           type="button"
-          disabled={disabled}
+          disabled={false}
           onClick={onClear}
           className="p-3 text-sm font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg shadow-sm active:bg-red-200 disabled:opacity-50 transition-colors"
         >
@@ -68,7 +68,7 @@ const VirtualKeyboard: React.FC<VirtualKeyboardProps> = ({
         
         <button
           type="button"
-          disabled={disabled}
+          disabled={false}
           onClick={onDelete}
           className="p-3 text-sm font-semibold bg-gray-200 hover:bg-gray-300 text-gray-800 border border-gray-300 rounded-lg shadow-sm active:bg-gray-400 disabled:opacity-50 transition-colors flex items-center justify-center"
         >

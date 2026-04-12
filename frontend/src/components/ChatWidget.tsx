@@ -59,6 +59,29 @@ export default function ChatWidget() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isUnlocked, privateKey]);
 
+  useEffect(() => {
+    const handleOpenChat = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setIsOpen(true);
+      setActiveTab('DM');
+      
+      const targetUsername = customEvent.detail;
+      
+      // If we don't have users yet, we might have to fetch them.
+      let list = users;
+      if (list.length === 0) {
+          list = await getUsersList();
+          setUsers(list);
+      }
+      const user = list.find(u => u.username === targetUsername);
+      if (user) {
+          setSelectedUser(user);
+      }
+    };
+    document.addEventListener('openChat', handleOpenChat);
+    return () => document.removeEventListener('openChat', handleOpenChat);
+  }, [users]);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -267,26 +290,34 @@ export default function ChatWidget() {
       );
 
       // 3. Send to API
-      await addGroupMember(selectedGroup.id, parseInt(newMemberId), wrappedData[0].encrypted_key);
-      alert(`${userObj.username} added successfully!`);
+      await addGroupMember(selectedGroup.id, userObj!.username, wrappedData[0].encrypted_key);
+      alert(`${userObj!.username} added successfully!`);
+      setSelectedGroup((prev: any) => ({
+        ...prev,
+        members: [...prev.members, { user: userObj!.id, username: userObj!.username, role: 'member', encrypted_group_key: wrappedData[0].encrypted_key }]
+      }));
       setNewMemberId('');
       fetchGroupsData(); // Refresh group member list
-    } catch (err) {
-      alert("Failed to add member. Ensure they have generated their keys.");
+    } catch (err: any) {
+      alert(`Failed to add member: ${err.message || 'Ensure they have generated their keys.'}`);
     }
   };
 
-  const handlePromote = async (userId: number) => {
+  const handlePromote = async (userId: number, username: string) => {
     try {
-      await promoteGroupMember(selectedGroup.id, userId);
+      await promoteGroupMember(selectedGroup.id, username);
+      setSelectedGroup((prev: any) => ({
+        ...prev,
+        members: prev.members.map((m: any) => m.user === userId ? { ...m, role: 'admin' } : m)
+      }));
       fetchGroupsData();
     } catch (err) { alert("Failed to promote user."); }
   };
 
-  const handleRemove = async (userId: number) => {
+  const handleRemove = async (userId: number, username: string) => {
     if (!window.confirm("Remove this user?")) return;
     try {
-      await removeGroupMember(selectedGroup.id, userId);
+      await removeGroupMember(selectedGroup.id, username);
       
       // 1. Generate new AES group key (Forward Secrecy!)
       const newKey = await generateGroupKey();
@@ -297,7 +328,7 @@ export default function ChatWidget() {
       // 3. Fetch all of their public keys
       const keyMapList = await Promise.all(remainingUsers.map(async (m: any) => {
           const keyData = await getPublicKey(m.username);
-          return { userId: m.user, publicKeyBase64: keyData.public_key };
+          return { userId: m.user, username: m.username, publicKeyBase64: keyData.public_key };
       }));
       
       // 4. Wrap new key for all remaining members at once
@@ -306,12 +337,15 @@ export default function ChatWidget() {
       // 5. Submit to Rotation Endpoint
       await rotateGroupKeys(
         selectedGroup.id, 
-        wrappedData.map(w => ({user_id: w.userId, encrypted_key: w.encrypted_key}))
+        wrappedData.map((w: any) => ({username: w.username, encrypted_key: w.encrypted_key}))
       );
       
       // 6. Update local session immediately so we stay connected
       setUnwrappedGroupKeys(prev => ({...prev, [selectedGroup.id]: newKey}));
-      
+      setSelectedGroup((prev: any) => ({
+        ...prev,
+        members: prev.members.filter((m: any) => m.user !== userId)
+      }));
       fetchGroupsData();
     } catch (err) { alert("Failed to remove user and rotate keys."); }
   };
@@ -461,9 +495,9 @@ export default function ChatWidget() {
                           {(myGroupRole === 'owner' || myGroupRole === 'admin') && m.role !== 'owner' && (
                             <div className="flex gap-2">
                               {myGroupRole === 'owner' && m.role !== 'admin' && (
-                                <button onClick={() => handlePromote(m.user)} className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded hover:bg-blue-200">Promote</button>
+                                <button onClick={() => handlePromote(m.user, m.username)} className="text-[10px] bg-blue-100 text-blue-700 px-1 rounded hover:bg-blue-200">Promote</button>
                               )}
-                              <button onClick={() => handleRemove(m.user)} className="text-[10px] bg-red-100 text-red-700 px-1 rounded hover:bg-red-200">Kick</button>
+                              <button onClick={() => handleRemove(m.user, m.username)} className="text-[10px] bg-red-100 text-red-700 px-1 rounded hover:bg-red-200">Kick</button>
                             </div>
                           )}
                         </li>

@@ -163,9 +163,9 @@ export const logoutUser = async () => {
 };
 
 // Also update getTOTPSetupURI to accept a userId:
-export const getTOTPSetupURI = async (userId: number) => {
+export const getTOTPSetupURI = async () => {
   try {
-    const response = await secureFetch(`${API_BASE_URL}/api/auth/totp/generate/${userId}/`, {
+    const response = await secureFetch(`${API_BASE_URL}/api/auth/totp/generate/`, {
       method: "GET",
       credentials: "include",
     });
@@ -583,19 +583,19 @@ export const sendGroupMessage = async (groupId: number, encryptedContent: string
 
 // --- GROUP MANAGEMENT APIs ---
 
-export const addGroupMember = async (groupId: number, userId: number, encryptedKey: string) => {
+export const addGroupMember = async (groupId: number, username: string, encryptedKey: string) => {
   const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ user_id: userId, encrypted_key: encryptedKey }),
+    body: JSON.stringify({ username, encrypted_key: encryptedKey }),
   });
   if (!response.ok) throw new Error('Failed to add member');
   return response.json();
 };
 
-export const removeGroupMember = async (groupId: number, userId: number) => {
-  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
+export const removeGroupMember = async (groupId: number, username: string) => {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${username}/`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -604,7 +604,7 @@ export const removeGroupMember = async (groupId: number, userId: number) => {
   return true;
 };
 
-export const rotateGroupKeys = async (groupId: number, keys: {user_id: number, encrypted_key: string}[]) => {
+export const rotateGroupKeys = async (groupId: number, keys: {username: string, encrypted_key: string}[]) => {
   const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/rotate/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -615,8 +615,8 @@ export const rotateGroupKeys = async (groupId: number, keys: {user_id: number, e
   return response.json();
 };
 
-export const promoteGroupMember = async (groupId: number, userId: number) => {
-  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${userId}/`, {
+export const promoteGroupMember = async (groupId: number, username: string) => {
+  const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/members/${username}/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

@@ -252,7 +252,15 @@ class JobListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = Job.objects.filter(is_active=True)
+        # Recruiter fix: only show jobs for the user's companies if my_jobs=true
+        if self.request.query_params.get('my_jobs') == 'true':
+            qs = Job.objects.filter(
+                Q(company__owner=self.request.user) | 
+                Q(company__employees=self.request.user)
+            ).distinct()
+        else:
+            qs = Job.objects.filter(is_active=True)
+            
         q = self.request.query_params.get('q')
         job_type = self.request.query_params.get('job_type')
         location = self.request.query_params.get('location')
@@ -375,8 +383,16 @@ class ApplicationListCreateView(generics.ListCreateAPIView):
                 notif_type='JOB_APPLICATION',
                 message=f'{self.request.user.username} applied to your job: {application.job.title}',
             )
-
-
+            
+        # Notify recruiters (employees)
+        for employee in application.job.company.employees.all():
+            if employee != self.request.user:
+                Notification.objects.create(
+                    recipient=employee,
+                    sender=self.request.user,
+                    notif_type='JOB_APPLICATION',
+                    message=f'{self.request.user.username} applied to your company job: {application.job.title}',
+                )
 class ApplicationDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = ApplicationSerializer
     permission_classes = [IsAuthenticated]

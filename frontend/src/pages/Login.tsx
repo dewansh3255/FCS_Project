@@ -124,40 +124,41 @@ export default function Login() {
   const box: React.CSSProperties = {
     background: 'white', padding: 36, borderRadius: 14,
     boxShadow: '0 4px 24px rgba(0,0,0,0.10)', width: 420,
-    fontFamily: 'Inter, system-ui, sans-serif'
+    fontFamily: 'Inter, system-ui, sans-serif',
+    position: 'relative'
   };
   const inputCls = "w-full border border-gray-300 p-2 mb-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500";
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f1f5f9' }}>
       <div style={box}>
-        <h2 style={{ fontSize: 24, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: '#1e293b', position: 'relative' }}>
-          {step === 2 && (
-            <button
-              onClick={() => { setStep(1); setOtpCode(''); setError(''); }}
-              style={{
-                position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#64748b', fontSize: 18, padding: '0 4px',
-              }}
-              title="Back to login"
-            >
-              ←
-            </button>
-          )}
-          {step === 3 && (
-            <button
-              onClick={() => { setStep(2); setBackupCode(''); setError(''); }}
-              style={{
-                position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#64748b', fontSize: 18, padding: '0 4px',
-              }}
-              title="Back to 2FA"
-            >
-              ←
-            </button>
-          )}
+        {step === 2 && (
+          <button
+            onClick={() => { setStep(1); setOtpCode(''); setError(''); }}
+            style={{
+              position: 'absolute', left: 16, top: 16,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#64748b', fontSize: 18, padding: '0 4px',
+            }}
+            title="Back to login"
+          >
+            ← Back
+          </button>
+        )}
+        {step === 3 && (
+          <button
+            onClick={() => { setStep(2); setBackupCode(''); setError(''); }}
+            style={{
+              position: 'absolute', left: 16, top: 16,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#64748b', fontSize: 18, padding: '0 4px',
+            }}
+            title="Back to 2FA"
+          >
+            ← Back
+          </button>
+        )}
+        <h2 style={{ fontSize: 24, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: '#1e293b' }}>
           {step === 1 ? 'Sign In' : step === 2 ? '2FA Verification' : 'Backup Code Login'}
         </h2>
         <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, marginBottom: 22, marginTop: 0 }}>
