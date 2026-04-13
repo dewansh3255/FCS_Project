@@ -83,6 +83,136 @@ def _clear_totp_lockout(username: str):
 # ────────────────────────────────────────────────────
 
 
+# ── BACKUP CODE & EMAIL OTP Lockout helpers ─────────────────────────────────
+def _backup_code_fail_key(user_id: int) -> str:
+    return f"backup_code_fail_count_{user_id}"
+
+
+def _backup_code_lock_key(user_id: int) -> str:
+    return f"backup_code_locked_{user_id}"
+
+
+def _check_backup_code_lockout(user_id: int):
+    """Returns (locked: bool, seconds_remaining: int)."""
+    remaining = cache.ttl(_backup_code_lock_key(user_id))
+    if remaining and remaining > 0:
+        return True, remaining
+    return False, 0
+
+
+def _record_backup_code_failure(user_id: int):
+    """
+    Increments the failure counter for backup code.
+    Triggers a 15-minute lockout after TOTP_MAX_ATTEMPTS failures.
+    Returns (locked_now: bool, attempts_remaining: int).
+    """
+    fail_key = _backup_code_fail_key(user_id)
+    lock_key = _backup_code_lock_key(user_id)
+
+    failures = cache.get(fail_key, 0) + 1
+    cache.set(fail_key, failures, timeout=TOTP_LOCKOUT_SECONDS)
+
+    if failures >= TOTP_MAX_ATTEMPTS:
+        cache.set(lock_key, '1', timeout=TOTP_LOCKOUT_SECONDS)
+        cache.delete(fail_key)
+        return True, 0
+
+    return False, TOTP_MAX_ATTEMPTS - failures
+
+
+def _clear_backup_code_lockout(user_id: int):
+    """Clear failure state after a successful backup code verification."""
+    cache.delete(_backup_code_fail_key(user_id))
+    cache.delete(_backup_code_lock_key(user_id))
+
+
+# ── EMAIL OTP Lockout helpers ───────────────────────────────────────────────
+def _email_otp_fail_key(user_id: int) -> str:
+    return f"email_otp_fail_count_{user_id}"
+
+
+def _email_otp_lock_key(user_id: int) -> str:
+    return f"email_otp_locked_{user_id}"
+
+
+def _check_email_otp_lockout(user_id: int):
+    """Returns (locked: bool, seconds_remaining: int)."""
+    remaining = cache.ttl(_email_otp_lock_key(user_id))
+    if remaining and remaining > 0:
+        return True, remaining
+    return False, 0
+
+
+def _record_email_otp_failure(user_id: int):
+    """
+    Increments the failure counter for email OTP.
+    Triggers a 15-minute lockout after TOTP_MAX_ATTEMPTS failures.
+    Returns (locked_now: bool, attempts_remaining: int).
+    """
+    fail_key = _email_otp_fail_key(user_id)
+    lock_key = _email_otp_lock_key(user_id)
+
+    failures = cache.get(fail_key, 0) + 1
+    cache.set(fail_key, failures, timeout=TOTP_LOCKOUT_SECONDS)
+
+    if failures >= TOTP_MAX_ATTEMPTS:
+        cache.set(lock_key, '1', timeout=TOTP_LOCKOUT_SECONDS)
+        cache.delete(fail_key)
+        return True, 0
+
+    return False, TOTP_MAX_ATTEMPTS - failures
+
+
+def _clear_email_otp_lockout(user_id: int):
+    """Clear failure state after a successful email OTP verification."""
+    cache.delete(_email_otp_fail_key(user_id))
+    cache.delete(_email_otp_lock_key(user_id))
+
+
+# ── REGISTRATION TOTP Lockout helpers ───────────────────────────────────────
+def _reg_totp_fail_key(session_id: str) -> str:
+    return f"reg_totp_fail_count_{session_id}"
+
+
+def _reg_totp_lock_key(session_id: str) -> str:
+    return f"reg_totp_locked_{session_id}"
+
+
+def _check_reg_totp_lockout(session_id: str):
+    """Returns (locked: bool, seconds_remaining: int)."""
+    remaining = cache.ttl(_reg_totp_lock_key(session_id))
+    if remaining and remaining > 0:
+        return True, remaining
+    return False, 0
+
+
+def _record_reg_totp_failure(session_id: str):
+    """
+    Increments the failure counter for registration TOTP.
+    Triggers a 15-minute lockout after TOTP_MAX_ATTEMPTS failures.
+    Returns (locked_now: bool, attempts_remaining: int).
+    """
+    fail_key = _reg_totp_fail_key(session_id)
+    lock_key = _reg_totp_lock_key(session_id)
+
+    failures = cache.get(fail_key, 0) + 1
+    cache.set(fail_key, failures, timeout=TOTP_LOCKOUT_SECONDS)
+
+    if failures >= TOTP_MAX_ATTEMPTS:
+        cache.set(lock_key, '1', timeout=TOTP_LOCKOUT_SECONDS)
+        cache.delete(fail_key)
+        return True, 0
+
+    return False, TOTP_MAX_ATTEMPTS - failures
+
+
+def _clear_reg_totp_lockout(session_id: str):
+    """Clear failure state after a successful registration TOTP verification."""
+    cache.delete(_reg_totp_fail_key(session_id))
+    cache.delete(_reg_totp_lock_key(session_id))
+# ────────────────────────────────────────────────────
+
+
 class UploadKeysView(APIView):
     """
     MEMBER B: Key Upload Endpoint
@@ -231,10 +361,41 @@ class VerifyTOTPView(APIView):
             if not data:
                 return Response({"error": "Registration session expired. Please register again."}, status=status.HTTP_400_BAD_REQUEST)
             
+            # 1. Check if registration TOTP is locked due to too many failed attempts
+            locked, secs = _check_reg_totp_lockout(session_id)
+            if locked:
+                mins = secs // 60
+                return Response({
+                    "error": f"Too many failed TOTP attempts. Registration is temporarily locked. "
+                            f"Please try again in {mins} minute(s) and {secs % 60} second(s).",
+                    "locked": True,
+                    "seconds_remaining": secs,
+                    "minutes_remaining": mins,
+                    "attempts_remaining": 0,
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            
+            # 2. Validate the TOTP code
             totp = pyotp.TOTP(data['totp_secret'])
             if not totp.verify(code, valid_window=1):
-                return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+                locked_now, attempts_left = _record_reg_totp_failure(session_id)
+                
+                if locked_now:
+                    return Response({
+                        "error": f"Too many failed TOTP attempts. Registration is locked for "
+                                f"{TOTP_LOCKOUT_SECONDS // 60} minutes.",
+                        "locked": True,
+                        "seconds_remaining": TOTP_LOCKOUT_SECONDS,
+                        "minutes_remaining": TOTP_LOCKOUT_SECONDS // 60,
+                        "attempts_remaining": 0,
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+                
+                return Response({
+                    "error": "Invalid OTP code.",
+                    "locked": False,
+                    "attempts_remaining": attempts_left,
+                }, status=status.HTTP_400_BAD_REQUEST)
             
+            # 3. TOTP verified - create user
             with transaction.atomic():
                 user = User.objects.create_user(
                     username=data['username'],
@@ -260,6 +421,7 @@ class VerifyTOTPView(APIView):
             
             create_audit_log('REGISTER', user, {'username': user.username})
             cache.delete(f"reg_{session_id}")
+            _clear_reg_totp_lockout(session_id)
 
             refresh = RefreshToken.for_user(user)
             response = Response({
@@ -1617,6 +1779,8 @@ class VerifyBackupCodeView(APIView):
     compared against stored hashes. On success, the code is marked as used
     (single-use) and JWT cookies are issued — identical to the TOTP flow.
     
+    Security: Max 3 attempts per user before 15-minute lockout.
+    
     POST /api/auth/backup-codes/verify/
     Body: { user_id, backup_code }
     """
@@ -1633,24 +1797,60 @@ class VerifyBackupCodeView(APIView):
 
         user = get_object_or_404(User, id=user_id)
 
-        # Hash the submitted code and look for a match
+        # 1. Check if account is locked due to too many failed attempts
+        locked, secs = _check_backup_code_lockout(user_id)
+        if locked:
+            mins = secs // 60
+            create_audit_log('BACKUP_CODE_BLOCKED', user, {
+                'reason': 'Account locked — too many failed backup code attempts',
+                'seconds_remaining': secs,
+            })
+            return Response({
+                'error': f'This account is locked due to too many failed backup code attempts. '
+                        f'Please try again in {mins} minute(s) and {secs % 60} second(s).',
+                'locked': True,
+                'seconds_remaining': secs,
+                'minutes_remaining': mins,
+                'attempts_remaining': 0,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # 2. Hash the submitted code and look for a match
         code_hash = hashlib.sha256(backup_code.encode()).hexdigest()
         match = BackupCode.objects.filter(
             user=user, code_hash=code_hash, is_used=False
         ).first()
 
         if not match:
-            create_audit_log('BACKUP_CODE_FAILED', user, {'reason': 'invalid_or_used'})
-            return Response({'error': 'Invalid or already-used backup code.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            locked_now, attempts_left = _record_backup_code_failure(user_id)
+            create_audit_log('BACKUP_CODE_FAILED', user, {
+                'reason': 'invalid_or_used',
+                'attempts_remaining': attempts_left
+            })
+            
+            if locked_now:
+                return Response({
+                    'error': f'Too many failed backup code attempts. This account has been locked for '
+                            f'{TOTP_LOCKOUT_SECONDS // 60} minutes.',
+                    'locked': True,
+                    'seconds_remaining': TOTP_LOCKOUT_SECONDS,
+                    'minutes_remaining': TOTP_LOCKOUT_SECONDS // 60,
+                    'attempts_remaining': 0,
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # Mark this code as used (single-use enforced)
+            return Response({
+                'error': 'Invalid or already-used backup code.',
+                'locked': False,
+                'attempts_remaining': attempts_left,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Mark this code as used (single-use enforced)
         match.is_used = True
         match.save()
 
         create_audit_log('LOGIN_WITH_BACKUP_CODE', user, {'backup_code_id': match.id})
+        _clear_backup_code_lockout(user_id)
 
-        # Issue JWT cookies — same as normal TOTP login
+        # 4. Issue JWT cookies — same as normal TOTP login
         refresh = RefreshToken.for_user(user)
         response = Response(
             {'message': 'Logged in with backup code.', 'access_token': str(refresh.access_token)},
@@ -1842,7 +2042,10 @@ class SendEmailOTPView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 class VerifyEmailOTPView(APIView):
-    """Verifies the OTP and permanently locks the email address."""
+    """
+    Verifies the OTP and permanently locks the email address.
+    Security: Max 3 attempts per user before 15-minute lockout.
+    """
     permission_classes = [IsAuthenticated]
     throttle_classes = [LoginRateThrottle]
 
@@ -1853,21 +2056,58 @@ class VerifyEmailOTPView(APIView):
         if getattr(user, 'is_email_verified', False):
             return Response({"error": "Email is already verified."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 1. Check if account is locked due to too many failed attempts
+        locked, secs = _check_email_otp_lockout(user.id)
+        if locked:
+            mins = secs // 60
+            create_audit_log('EMAIL_OTP_BLOCKED', user, {
+                'reason': 'Account locked — too many failed email OTP attempts',
+                'seconds_remaining': secs,
+            })
+            return Response({
+                'error': f'Email verification temporarily locked due to too many failed attempts. '
+                        f'Please try again in {mins} minute(s) and {secs % 60} second(s).',
+                'locked': True,
+                'seconds_remaining': secs,
+                'minutes_remaining': mins,
+                'attempts_remaining': 0,
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
         cache_key = f"email_otp_{user.id}"
         cached_data = cache.get(cache_key)
 
-        # 1. Check if OTP exists and matches
+        # 2. Check if OTP exists and matches
         if not cached_data or cached_data['otp'] != submitted_otp:
-            create_audit_log('EMAIL_VERIFY_FAILED', user, {'reason': 'invalid_or_expired_otp'})
-            return Response({"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST)
+            locked_now, attempts_left = _record_email_otp_failure(user.id)
+            create_audit_log('EMAIL_VERIFY_FAILED', user, {
+                'reason': 'invalid_or_expired_otp',
+                'attempts_remaining': attempts_left
+            })
+            
+            if locked_now:
+                return Response({
+                    'error': f'Too many failed email OTP attempts. Verification is locked for '
+                            f'{TOTP_LOCKOUT_SECONDS // 60} minutes.',
+                    'locked': True,
+                    'seconds_remaining': TOTP_LOCKOUT_SECONDS,
+                    'minutes_remaining': TOTP_LOCKOUT_SECONDS // 60,
+                    'attempts_remaining': 0,
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # 2. Update the user record
+            return Response({
+                'error': 'Invalid or expired OTP.',
+                'locked': False,
+                'attempts_remaining': attempts_left,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Update the user record
         user.email = cached_data['email']
         user.is_email_verified = True
         user.save()
 
-        # 3. Clean up cache and log the success
+        # 4. Clean up cache and log the success
         cache.delete(cache_key)
+        _clear_email_otp_lockout(user.id)
         create_audit_log('EMAIL_VERIFIED', user, {'new_email': user.email})
 
         return Response({"message": "Email successfully verified and locked!"}, status=status.HTTP_200_OK)

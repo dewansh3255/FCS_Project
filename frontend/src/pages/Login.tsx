@@ -303,6 +303,25 @@ export default function Login() {
                 outline: 'none', boxSizing: 'border-box'
               }}
             />
+
+            {/* Attempt-remaining badge for backup codes */}
+            {attemptsLeft < 3 && attemptsLeft > 0 && (
+              <div style={{
+                width: '100%', marginBottom: 14,
+                background: attemptsLeft === 1 ? '#fff7ed' : '#fefce8',
+                border: `1px solid ${attemptsLeft === 1 ? '#fb923c' : '#facc15'}`,
+                borderRadius: 8, padding: '8px 12px', fontSize: 13,
+                color: attemptsLeft === 1 ? '#c2410c' : '#854d0e',
+                display: 'flex', alignItems: 'center', gap: 6
+              }}>
+                <span>{attemptsLeft === 1 ? '⚠️' : '⚡'}</span>
+                <span>
+                  <strong>{attemptsLeft} attempt{attemptsLeft === 1 ? '' : 's'} remaining</strong>
+                  {attemptsLeft === 1 && ' — next failure will lock your account for 15 minutes'}
+                </span>
+              </div>
+            )}
+
             <button type="submit" style={{
               width: '100%', padding: '10px', borderRadius: 8, background: '#6366f1',
               color: 'white', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer'

@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { registerUser, getTOTPSetupURI, verifyTOTPCode, uploadKeys } from '../services/api';
 import { generateAndWrapKeys } from '../utils/crypto'; // <--- ADD THIS
 import VirtualKeyboard from '../components/VirtualKeyboard';
+import { useEffect, useRef } from 'react';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -20,6 +21,31 @@ export default function Register() {
   });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswordRules, setShowPasswordRules] = useState(false);
+
+  // Registration TOTP attempt tracking
+  const [attemptsLeft, setAttemptsLeft] = useState(3);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Countdown timer for registration lockout
+  useEffect(() => {
+    if (isLocked && lockSecondsLeft > 0) {
+      countdownRef.current = setInterval(() => {
+        setLockSecondsLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current!);
+            setIsLocked(false);
+            setAttemptsLeft(3);
+            setError('');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [isLocked, lockSecondsLeft]);
 
   // Step 1: Submit the Registration Form
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -51,6 +77,16 @@ export default function Register() {
       // 1. Verify TOTP (This creates the user, logs the user in and sets cookie!)
       const data = await verifyTOTPCode(sessionId, otpCode);
 
+      // Check if response indicates account is locked
+      if (data.locked) {
+        setIsLocked(true);
+        setLockSecondsLeft(data.seconds_remaining || 15 * 60);
+        setAttemptsLeft(0);
+        setError(data.error || 'Account temporarily locked. Please try again later.');
+        setOtpCode('');
+        return;
+      }
+
       localStorage.setItem('username', formData.username);
       
       // 2. Now that we are logged in, generate the RSA keys and wrap them with the password
@@ -70,7 +106,22 @@ export default function Register() {
       }
     } catch (err: any) {
       setOtpCode(''); // auto-clear on error so keyboard works
-      setError(err.message || 'Verification failed');
+      
+      // Handle attempt limiting errors
+      if (err.locked) {
+        setIsLocked(true);
+        setLockSecondsLeft(err.seconds_remaining || 15 * 60);
+        setAttemptsLeft(0);
+        setError(err.message || 'Account temporarily locked. Please try again later.');
+      } else if (err.attempts_remaining !== undefined) {
+        const newLeft = err.attempts_remaining;
+        setAttemptsLeft(newLeft);
+        setError(
+          `${err.message || 'Invalid code'} — ${newLeft} attempt${newLeft === 1 ? '' : 's'} remaining before lockout.`
+        );
+      } else {
+        setError(err.message || 'Verification failed');
+      }
     }
   };
 
@@ -141,7 +192,7 @@ export default function Register() {
           </form>
         )}
 
-        {step === 2 && (
+        {step === 2 && !isLocked && (
           <form onSubmit={handleVerifySubmit} className="flex flex-col items-center">
             <div className="mb-6 p-2 border-2 rounded flex flex-col items-center">
               <p className="font-bold mb-2">Setup Authenticator</p>
@@ -158,10 +209,48 @@ export default function Register() {
               onDelete={() => setOtpCode(prev => prev.slice(0, -1))}
               onClear={() => setOtpCode('')}
             />
+
+            {/* Attempt-remaining badge for registration */}
+            {attemptsLeft < 3 && attemptsLeft > 0 && (
+              <div style={{
+                width: '100%', marginBottom: 14, marginTop: 10,
+                background: attemptsLeft === 1 ? '#fff7ed' : '#fefce8',
+                border: `1px solid ${attemptsLeft === 1 ? '#fb923c' : '#facc15'}`,
+                borderRadius: 8, padding: '8px 12px', fontSize: 13,
+                color: attemptsLeft === 1 ? '#c2410c' : '#854d0e',
+                display: 'flex', alignItems: 'center', gap: 6
+              }}>
+                <span>{attemptsLeft === 1 ? '⚠️' : '⚡'}</span>
+                <span>
+                  <strong>{attemptsLeft} attempt{attemptsLeft === 1 ? '' : 's'} remaining</strong>
+                  {attemptsLeft === 1 && ' — next failure will lock your account for 15 minutes'}
+                </span>
+              </div>
+            )}
+
             <button type="submit" className="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700">
               Verify & Complete Registration
             </button>
           </form>
+        )}
+
+        {/* Lockout message during registration */}
+        {step === 2 && isLocked && (
+          <div className="flex flex-col items-center">
+            <div style={{
+              background: '#fee2e2', border: '1px solid #fca5a5',
+              color: '#991b1b', padding: 16, borderRadius: 8, marginBottom: 16
+            }}>
+              <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>🔒 Account Temporarily Locked</p>
+              <p>Too many failed TOTP attempts. Please try again in:</p>
+              <p style={{ fontSize: 24, fontWeight: 700, marginTop: 8, fontFamily: 'monospace' }}>
+                {Math.floor(lockSecondsLeft / 60).toString().padStart(2, '0')}:{(lockSecondsLeft % 60).toString().padStart(2, '0')}
+              </p>
+              <p style={{ fontSize: 12, marginTop: 8, opacity: 0.8 }}>
+                For your security, you can try again after the timer expires.
+              </p>
+            </div>
+          </div>
         )}
 
         {step === 3 && (
