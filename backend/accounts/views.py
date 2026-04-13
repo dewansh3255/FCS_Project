@@ -23,6 +23,8 @@ from .serializers import ChatGroupSerializer, GroupMessageSerializer, GroupMembe
 from django.core.cache import cache
 from django.core.mail import send_mail
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from .audit import create_audit_log
 
 User = get_user_model()
@@ -300,6 +302,7 @@ class UploadKeysView(APIView):
         )
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class RegisterView(APIView):
     """
     MEMBER A: Deferred Registration Endpoint
@@ -336,6 +339,7 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class CustomLoginView(APIView):
     """
     MEMBER A: Step 1 of Login (Password Check)
@@ -397,6 +401,7 @@ class GenerateTOTPURIView(APIView):
         return Response({"qr_uri": uri}, status=status.HTTP_200_OK)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class VerifyTOTPView(APIView):
     """
     MEMBER A: Step 2 of Login (OTP Check & Issue Cookies)
@@ -594,6 +599,7 @@ class ProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
         return self.request.user.profile
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
     """Securely clear the authentication cookies."""
     permission_classes = [IsAuthenticated]
