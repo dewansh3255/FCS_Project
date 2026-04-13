@@ -47,6 +47,7 @@ export default function ProfilePage() {
   const [reportReason, setReportReason] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [reportCooldownUntil, setReportCooldownUntil] = useState<number | null>(null);
 
   useEffect(() => {
     if (!username) return;
@@ -64,6 +65,21 @@ export default function ProfilePage() {
     };
     load();
   }, [username, navigate]);
+
+  // Read cooldown from localStorage once we know the target username
+  useEffect(() => {
+    if (!username) return;
+    const key = `report_cooldown_${username}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const until = parseInt(stored, 10);
+      if (Date.now() < until) {
+        setReportCooldownUntil(until);
+      } else {
+        localStorage.removeItem(key); // expired, clean up
+      }
+    }
+  }, [username]);
 
   // ── Connection actions ────────────────────────────────────────────────
 
@@ -105,15 +121,31 @@ export default function ProfilePage() {
     setReporting(true);
     try {
       await submitReport({ reported_user_id: profile.id, reason: reportReason });
-      alert("Report submitted to Admins.");
+      // Set 12-hour cooldown in localStorage
+      const cooldownUntil = Date.now() + 12 * 60 * 60 * 1000;
+      localStorage.setItem(`report_cooldown_${username}`, String(cooldownUntil));
+      setReportCooldownUntil(cooldownUntil);
       setShowReport(false);
       setReportReason('');
+      alert('Report submitted to Admins. You cannot report this user again for 12 hours.');
     } catch (err: any) {
-      alert(err.message);
+      // If backend also returns 429, sync the cooldown from local storage if not already set
+      if (err.message?.includes('12 hours') || err.message?.includes('recently reported')) {
+        const cooldownUntil = Date.now() + 12 * 60 * 60 * 1000;
+        localStorage.setItem(`report_cooldown_${username}`, String(cooldownUntil));
+        setReportCooldownUntil(cooldownUntil);
+        setShowReport(false);
+      }
+      alert(err.message || 'Failed to submit report.');
     } finally {
       setReporting(false);
     }
   };
+
+  const isReportOnCooldown = reportCooldownUntil !== null && Date.now() < reportCooldownUntil;
+  const reportCooldownHoursLeft = reportCooldownUntil
+    ? Math.ceil((reportCooldownUntil - Date.now()) / (1000 * 60 * 60))
+    : 0;
 
   // ── Render: Loading / Error ───────────────────────────────────────────
 
@@ -246,9 +278,21 @@ export default function ProfilePage() {
                     </div>
                   )}
 
-                  <button onClick={() => setShowReport(true)} className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 transition ml-auto">
-                    ⚠️ Report
-                  </button>
+                  {isReportOnCooldown ? (
+                    <span
+                      className="px-3 py-2 bg-gray-100 text-gray-400 rounded-xl text-xs font-semibold ml-auto cursor-not-allowed"
+                      title={`You already reported this user. You can report again in ~${reportCooldownHoursLeft}h.`}
+                    >
+                      ⚠️ Reported ({reportCooldownHoursLeft}h cooldown)
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setShowReport(true)}
+                      className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-semibold hover:bg-red-100 transition ml-auto"
+                    >
+                      ⚠️ Report
+                    </button>
+                  )}
                 </div>
               )}
 
