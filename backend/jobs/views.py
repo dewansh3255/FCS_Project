@@ -161,49 +161,6 @@ class DeleteResumeView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class CompanyListCreateView(generics.ListCreateAPIView):
-    serializer_class = CompanySerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        return Company.objects.filter(Q(owner=user) | Q(employees=user)).distinct()
-
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
-
-
-class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = CompanySerializer
-    permission_classes = [IsAuthenticated]
-    queryset = Company.objects.all()
-
-    def get_object(self):
-        obj = super().get_object()
-        if obj.owner != self.request.user and self.request.user not in obj.employees.all():
-            raise PermissionDenied(
-                "You do not have permission to view this company.")
-        return obj
-
-    def update(self, request, *args, **kwargs):
-        obj = self.get_object()
-        if obj.owner != request.user:
-            raise PermissionDenied("You can only update companies you own.")
-
-        response = super().update(request, *args, **kwargs)
-        create_audit_log('COMPANY_UPDATE', request.user, {
-                         'company_id': obj.id, 'name': obj.name})
-        return response
-
-    def destroy(self, request, *args, **kwargs):
-        obj = self.get_object()
-        if obj.owner != request.user:
-            raise PermissionDenied("You can only delete companies you own.")
-
-        create_audit_log('COMPANY_DELETE', request.user, {
-                         'company_id': obj.id, 'name': obj.name})
-        return super().destroy(request, *args, **kwargs)
-
 
 class CompanyEmployeeManageView(APIView):
     permission_classes = [IsAuthenticated]
@@ -225,16 +182,27 @@ class CompanyEmployeeManageView(APIView):
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
 
-        company.employees.add(employee)
+        # CRITICAL FIX: Use transaction to ensure consistency
+        # If notification fails, don't add employee
+        with transaction.atomic():
+            company.employees.add(employee)
 
-        # Dispatch notification
-        from accounts.models import Notification
-        Notification.objects.create(
-            recipient=employee,
-            sender=request.user,
-            notif_type='COMPANY_ASSIGNED',
-            message=f"You have been added as a recruiter for {company.name}"
-        )
+            # Dispatch notification
+            from accounts.models import Notification
+            Notification.objects.create(
+                recipient=employee,
+                sender=request.user,
+                notif_type='COMPANY_ASSIGNED',
+                message=f"You have been added as a recruiter for {company.name}"
+            )
+
+            # Log the action for audit trail
+            create_audit_log('COMPANY_EMPLOYEE_ADDED', request.user, {
+                'company_id': company.id,
+                'company_name': company.name,
+                'added_user_id': employee.id,
+                'added_username': employee.username
+            })
 
         return Response({"message": f"{username} added to company"}, status=200)
 
@@ -246,13 +214,26 @@ class CompanyEmployeeManageView(APIView):
                 "Only the company owner can remove recruiters.")
 
         username = request.data.get('username')
+        if not username:
+            return Response({"error": "Username is required"}, status=400)
+            
         User = get_user_model()
         try:
             employee = User.objects.get(username=username)
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
 
-        company.employees.remove(employee)
+        # CRITICAL FIX: Transaction safety + audit logging
+        with transaction.atomic():
+            company.employees.remove(employee)
+            
+            create_audit_log('COMPANY_EMPLOYEE_REMOVED', request.user, {
+                'company_id': company.id,
+                'company_name': company.name,
+                'removed_user_id': employee.id,
+                'removed_username': employee.username
+            })
+        
         return Response({"message": f"{username} removed from company"}, status=200)
 
 
@@ -688,7 +669,15 @@ class CompanyDetailView(generics.RetrieveUpdateDestroyAPIView):
             if not access or access.access_type != 'FULL':
                 raise PermissionDenied("You don't have permission to edit this company.")
         
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        
+        # Log the update for audit trail
+        create_audit_log('COMPANY_UPDATED', request.user, {
+            'company_id': company.id,
+            'company_name': company.name
+        })
+        
+        return response
 
     def destroy(self, request, *args, **kwargs):
         company = self.get_object()

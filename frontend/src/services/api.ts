@@ -15,12 +15,36 @@ const onRereshed = (success: boolean) => {
   refreshSubscribers = [];
 }
 
+// CRITICAL FIX: Helper to get CSRF token from cookies
+const getCsrfTokenFromCookie = (): string => {
+  const name = 'csrftoken';
+  let cookieValue = '';
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+};
+
 export const secureFetch = async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
   options.credentials = options.credentials || "include";
+  
+  // CRITICAL FIX: Add CSRF token to all non-GET requests
+  const csrfToken = getCsrfTokenFromCookie();
   options.headers = {
     ...options.headers,
-    'X-Requested-With': 'XMLHttpRequest'
+    'X-Requested-With': 'XMLHttpRequest',
+    ...(csrfToken && options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase()) && {
+      'X-CSRFToken': csrfToken
+    })
   };
+  
   let response = await fetch(url, options);
 
   const urlStr = url.toString();

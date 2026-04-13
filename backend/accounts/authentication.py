@@ -52,6 +52,8 @@ class CookieJWTAuthentication(JWTAuthentication):
             try:
                 validated_token = self.get_validated_token(raw_token)
                 user = self.get_user(validated_token)
+                # CRITICAL FIX: Only enforce CSRF for authenticated requests with cookies
+                # Registration/Login don't have cookies yet, so they don't need CSRF check here
                 self.enforce_csrf(request)
                 return user, validated_token
             except PermissionDenied as e:
@@ -60,4 +62,5 @@ class CookieJWTAuthentication(JWTAuthentication):
                 # Token might be expired or invalid
                 return None
 
+        # No token found - request is unauthenticated, CSRF not required yet
         return None
