@@ -32,6 +32,39 @@ const getCsrfTokenFromCookie = (): string => {
   return cookieValue;
 };
 
+// Ensure CSRF token is fetched before making POST requests
+// This makes a safe GET request which tells Django to set the csrftoken cookie
+let csrfFetchPromise: Promise<void> | null = null;
+export const ensureCsrfToken = async (): Promise<void> => {
+  if (csrfFetchPromise) {
+    return csrfFetchPromise;
+  }
+
+  // Check if token already exists
+  if (getCsrfTokenFromCookie()) {
+    return;
+  }
+
+  csrfFetchPromise = (async () => {
+    try {
+      // Make a GET request to a public endpoint to trigger CSRF cookie generation
+      // Using OPTIONS method on register endpoint to avoid any side effects
+      const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
+        method: 'OPTIONS',
+        credentials: 'include',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        }
+      });
+      // Token should be set in the response cookies
+    } catch (err) {
+      console.debug('CSRF token fetch: OPTIONS request attempted');
+    }
+  })();
+
+  return csrfFetchPromise;
+};
+
 export const secureFetch = async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
   options.credentials = options.credentials || "include";
   
@@ -126,6 +159,9 @@ export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string)
 
 export const registerUser = async (userData: any) => {
   try {
+    // Ensure CSRF token is set before POST
+    await ensureCsrfToken();
+    
     const response = await secureFetch(`${API_BASE_URL}/api/auth/register/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -147,6 +183,9 @@ export const registerUser = async (userData: any) => {
 
 export const loginUser = async (credentials: any) => {
   try {
+    // Ensure CSRF token is set before POST
+    await ensureCsrfToken();
+    
     const response = await secureFetch(`${API_BASE_URL}/api/auth/login/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
