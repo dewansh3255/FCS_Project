@@ -4,6 +4,9 @@ import Register from './pages/Register';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Jobs from './pages/Jobs';
+import Companies from './pages/Companies';
+import CompanyDetail from './pages/CompanyDetail';
+import CompanyForm from './pages/CompanyForm';
 import Applications from './pages/Applications';
 import Recruiter from './pages/Recruiter';
 import AdminPanel from './pages/AdminPanel';
@@ -40,7 +43,7 @@ function PrivateRoute({ children }: { children: JSX.Element }) {
       }
     };
     window.addEventListener('pageshow', handlePageShow);
-    
+
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
 
@@ -62,6 +65,10 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/jobs" element={<PrivateRoute><Jobs /></PrivateRoute>} />
+            <Route path="/companies" element={<PrivateRoute><Companies /></PrivateRoute>} />
+            <Route path="/companies/create" element={<PrivateRoute><CompanyForm /></PrivateRoute>} />
+            <Route path="/companies/:id" element={<PrivateRoute><CompanyDetail /></PrivateRoute>} />
+            <Route path="/companies/:id/edit" element={<PrivateRoute><CompanyForm /></PrivateRoute>} />
             <Route path="/applications" element={<PrivateRoute><Applications /></PrivateRoute>} />
             <Route path="/recruiter" element={<PrivateRoute><Recruiter /></PrivateRoute>} />
             <Route path="/admin-panel" element={<PrivateRoute><AdminPanel /></PrivateRoute>} />

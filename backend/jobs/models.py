@@ -258,8 +258,15 @@ class Company(models.Model):
     location = models.CharField(max_length=200, blank=True)
     website = models.URLField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
-    # NEW: Safe addition for Member 2 (Corporate)
+    # Extended fields
+    logo = models.ImageField(upload_to='company_logos/', blank=True, null=True)
+    industry = models.CharField(max_length=200, blank=True)
+    employee_count = models.IntegerField(null=True, blank=True)
+    social_links = models.JSONField(default=dict, blank=True, help_text="JSON object with linkedin, twitter, facebook, etc.")
+    
+    # Safe addition for Member 2 (Corporate)
     employees = models.ManyToManyField(
         settings.AUTH_USER_MODEL, 
         related_name='companies_employed_at', 
@@ -268,6 +275,9 @@ class Company(models.Model):
 
     def __str__(self):
         return self.name
+    
+    class Meta:
+        ordering = ['-created_at']
 
 
 class Job(models.Model):
@@ -318,6 +328,75 @@ class Application(models.Model):
 
     def __str__(self):
         return f"{self.applicant.username} → {self.job.title}"
+
+
+# =========================================================
+# --- COMPANY FEATURE MODELS ---
+# =========================================================
+
+class CompanyPost(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='posts')
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='company_posts'
+    )
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Post by {self.author.username} in {self.company.name}"
+
+
+class CompanyAccess(models.Model):
+    ACCESS_TYPES = [
+        ('FULL', 'Full Access - Can edit company and post jobs'),
+        ('POST_ONLY', 'Post Only - Can only post jobs and updates'),
+        ('VIEW', 'View Only - Can only view company details'),
+    ]
+    
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='access_permissions')
+    recruiter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='company_access'
+    )
+    access_type = models.CharField(max_length=20, choices=ACCESS_TYPES, default='VIEW')
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='company_access_granted'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('company', 'recruiter')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.recruiter.username} - {self.company.name} ({self.access_type})"
+
+
+class CompanySave(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='saved_by')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='saved_companies'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('company', 'user')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} saved {self.company.name}"
 
 
 # =========================================================

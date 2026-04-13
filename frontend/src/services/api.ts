@@ -7,61 +7,61 @@ let isRefreshing = false;
 let refreshSubscribers: ((isSuccessful: boolean) => void)[] = [];
 
 const subscribeTokenRefresh = (cb: (isSuccessful: boolean) => void) => {
-    refreshSubscribers.push(cb);
+  refreshSubscribers.push(cb);
 }
 
 const onRereshed = (success: boolean) => {
-    refreshSubscribers.forEach(cb => cb(success));
-    refreshSubscribers = [];
+  refreshSubscribers.forEach(cb => cb(success));
+  refreshSubscribers = [];
 }
 
 export const secureFetch = async (url: string | URL | globalThis.Request, options: RequestInit = {}): Promise<Response> => {
-    options.credentials = options.credentials || "include";
-    options.headers = {
-        ...options.headers,
-        'X-Requested-With': 'XMLHttpRequest'
-    };
-    let response = await fetch(url, options);
+  options.credentials = options.credentials || "include";
+  options.headers = {
+    ...options.headers,
+    'X-Requested-With': 'XMLHttpRequest'
+  };
+  let response = await fetch(url, options);
 
-    const urlStr = url.toString();
-    const tokenPaths = ['/login/', '/register/', '/totp/', '/token/refresh/'];
-    if (response.status === 401 && !tokenPaths.some(p => urlStr.includes(p))) {
-        if (!isRefreshing) {
-            isRefreshing = true;
-            try {
-                const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                });
-                
-                if (refreshResponse.ok) {
-                    onRereshed(true);
-                    response = await fetch(url, options);
-                } else {
-                    onRereshed(false);
-                    if (window.location.pathname !== '/login') {
-                        window.location.href = '/login';
-                    }
-                }
-            } catch (err) {
-                onRereshed(false);
-            } finally {
-                isRefreshing = false;
-            }
+  const urlStr = url.toString();
+  const tokenPaths = ['/login/', '/register/', '/totp/', '/token/refresh/'];
+  if (response.status === 401 && !tokenPaths.some(p => urlStr.includes(p))) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      try {
+        const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        if (refreshResponse.ok) {
+          onRereshed(true);
+          response = await fetch(url, options);
         } else {
-            return new Promise((resolve, reject) => {
-                subscribeTokenRefresh((success) => {
-                    if (success) {
-                        resolve(fetch(url, options));
-                    } else {
-                        reject(new Error('Token refresh failed'));
-                    }
-                });
-            });
+          onRereshed(false);
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
         }
+      } catch (err) {
+        onRereshed(false);
+      } finally {
+        isRefreshing = false;
+      }
+    } else {
+      return new Promise((resolve, reject) => {
+        subscribeTokenRefresh((success) => {
+          if (success) {
+            resolve(fetch(url, options));
+          } else {
+            reject(new Error('Token refresh failed'));
+          }
+        });
+      });
     }
-    return response;
+  }
+  return response;
 };
 
 export const uploadKeys = async (publicKey: string, encryptedPrivateKey: string) => {
@@ -283,7 +283,7 @@ export const uploadResume = async (file: File, digitalSignature: string) => {
     body: formData,
     credentials: 'include',
   });
-  
+
   // If the backend returns a 400 error, try to extract the message
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
@@ -506,7 +506,7 @@ export const updateApplicationStatus = async (id: number, status: string, recrui
   return response.json();
 };
 
-export const downloadApplicationResume = (applicationId: number) => 
+export const downloadApplicationResume = (applicationId: number) =>
   `${API_BASE_URL}/api/jobs/applications/${applicationId}/resume/`;
 
 export const getJobApplicationResume = async (applicationId: number) => {
@@ -530,10 +530,31 @@ export const getAuditLogs = async () => {
 };
 
 // --- USER ROLE API ---
+// Helper function to get CSRF token from cookie
+const getCsrfToken = (): string => {
+  const name = 'csrftoken';
+  let cookieValue = '';
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+};
+
 export const changeUserRole = async (newRole: 'CANDIDATE' | 'RECRUITER', totpCode: string) => {
+  const csrfToken = getCsrfToken();
   const response = await secureFetch(`${API_BASE_URL}/api/auth/role/change/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrfToken && { 'X-CSRFToken': csrfToken })
+    },
     credentials: 'include',
     body: JSON.stringify({ role: newRole, totp_code: totpCode }),
   });
@@ -555,7 +576,7 @@ export const getMyGroups = async () => {
   return response.json();
 };
 
-export const createGroup = async (name: string, members: {user_id: number, encrypted_key: string}[]) => {
+export const createGroup = async (name: string, members: { user_id: number, encrypted_key: string }[]) => {
   const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -609,7 +630,7 @@ export const removeGroupMember = async (groupId: number, username: string) => {
   return true;
 };
 
-export const rotateGroupKeys = async (groupId: number, keys: {username: string, encrypted_key: string}[]) => {
+export const rotateGroupKeys = async (groupId: number, keys: { username: string, encrypted_key: string }[]) => {
   const response = await secureFetch(`${API_BASE_URL}/api/auth/groups/${groupId}/rotate/`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -937,7 +958,7 @@ export const submitReport = async (data: { reported_user_id?: number, reported_p
     body: JSON.stringify(data)
   });
   if (!res.ok) {
-    const d = await res.json().catch(()=> ({}));
+    const d = await res.json().catch(() => ({}));
     throw new Error(d.error || "Failed to submit report");
   }
   return res.json();
@@ -965,7 +986,7 @@ export const sendEmailOtp = async (newEmail: string) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ new_email: newEmail })
   });
-  
+
   if (!res.ok) {
     const errorData = await res.json();
     throw new Error(errorData.error || "Failed to send OTP");
@@ -979,7 +1000,7 @@ export const verifyEmailOtp = async (otp: string) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ otp })
   });
-  
+
   if (!res.ok) {
     const errorData = await res.json();
     throw new Error(errorData.error || "Failed to verify OTP");

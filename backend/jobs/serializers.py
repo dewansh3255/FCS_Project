@@ -1,11 +1,12 @@
 from rest_framework import serializers
-from .models import Resume, Company, Job, Application
+from .models import Resume, Company, Job, Application, CompanyPost, CompanyAccess, CompanySave
 
 
 class ResumeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Resume
-        fields = ['id', 'user', 'file', 'is_encrypted', 'uploaded_at', 'digital_signature']
+        fields = ['id', 'user', 'file', 'is_encrypted',
+                  'uploaded_at', 'digital_signature']
         read_only_fields = ['user', 'is_encrypted']
 
 
@@ -14,25 +15,52 @@ class AdminResumeSerializer(serializers.ModelSerializer):
     user_username = serializers.ReadOnlyField(source='user.username')
     user_email = serializers.ReadOnlyField(source='user.email')
     user_role = serializers.ReadOnlyField(source='user.role')
-    
+
     class Meta:
         model = Resume
-        fields = ['id', 'user', 'user_username', 'user_email', 'user_role', 'file', 'is_encrypted', 'uploaded_at', 'digital_signature']
+        fields = ['id', 'user', 'user_username', 'user_email', 'user_role',
+                  'file', 'is_encrypted', 'uploaded_at', 'digital_signature']
         read_only_fields = ['user', 'is_encrypted', 'uploaded_at']
 
 
 class CompanySerializer(serializers.ModelSerializer):
     owner_username = serializers.ReadOnlyField(source='owner.username')
     employees_list = serializers.SerializerMethodField()
+    is_saved = serializers.SerializerMethodField()
+    jobs_count = serializers.SerializerMethodField()
+    access_level = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
-        fields = ['id', 'owner', 'owner_username', 'name', 'description', 'location', 'website', 'created_at', 'employees_list']
-        read_only_fields = ['owner']
+        fields = [
+            'id', 'owner', 'owner_username', 'name', 'description', 'location', 
+            'website', 'logo', 'industry', 'employee_count', 'social_links',
+            'created_at', 'updated_at', 'employees_list', 'is_saved', 'jobs_count', 'access_level'
+        ]
+        read_only_fields = ['owner', 'created_at', 'updated_at']
 
     def get_employees_list(self, obj):
         return [{'id': e.id, 'username': e.username} for e in obj.employees.all()]
-
+    
+    def get_is_saved(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return CompanySave.objects.filter(company=obj, user=request.user).exists()
+        return False
+    
+    def get_jobs_count(self, obj):
+        return obj.jobs.filter(is_active=True).count()
+    
+    def get_access_level(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        
+        if obj.owner == request.user:
+            return 'OWNER'
+        
+        access = CompanyAccess.objects.filter(company=obj, recruiter=request.user).first()
+        return access.access_type if access else None
 
 
 class JobSerializer(serializers.ModelSerializer):
@@ -63,17 +91,56 @@ class JobSerializer(serializers.ModelSerializer):
 class ApplicationSerializer(serializers.ModelSerializer):
     applicant_username = serializers.ReadOnlyField(source='applicant.username')
     job_title = serializers.ReadOnlyField(source='job.title')
-    
+
     # 🚨 THIS IS THE LINE THAT WAS MISSING 🚨
     # It tells Django: "Don't look on the Application model, look at the linked Resume model!"
-    digital_signature = serializers.ReadOnlyField(source='resume.digital_signature')
+    digital_signature = serializers.ReadOnlyField(
+        source='resume.digital_signature')
 
     class Meta:
         model = Application
         fields = [
             'id', 'applicant', 'applicant_username', 'job', 'job_title',
-            'resume', 
-            'digital_signature', # Now this will work perfectly
+            'resume',
+            'digital_signature',  # Now this will work perfectly
             'cover_note', 'status', 'recruiter_notes', 'applied_at', 'updated_at'
         ]
         read_only_fields = ['applicant', 'applied_at', 'updated_at']
+
+
+# =========================================================
+# --- COMPANY FEATURE SERIALIZERS ---
+# =========================================================
+
+class CompanyPostSerializer(serializers.ModelSerializer):
+    author_username = serializers.ReadOnlyField(source='author.username')
+    company_name = serializers.ReadOnlyField(source='company.name')
+
+    class Meta:
+        model = CompanyPost
+        fields = ['id', 'company', 'company_name', 'author', 'author_username', 'content', 'created_at', 'updated_at']
+        read_only_fields = ['author', 'company', 'created_at', 'updated_at']
+
+
+class CompanyAccessSerializer(serializers.ModelSerializer):
+    recruiter_username = serializers.ReadOnlyField(source='recruiter.username')
+    granted_by_username = serializers.ReadOnlyField(source='granted_by.username')
+    company_name = serializers.ReadOnlyField(source='company.name')
+
+    class Meta:
+        model = CompanyAccess
+        fields = [
+            'id', 'company', 'company_name', 'recruiter', 'recruiter_username',
+            'access_type', 'granted_by', 'granted_by_username', 'created_at'
+        ]
+        read_only_fields = ['granted_by', 'created_at']
+
+
+class CompanySaveSerializer(serializers.ModelSerializer):
+    company_name = serializers.ReadOnlyField(source='company.name')
+    company_logo = serializers.ReadOnlyField(source='company.logo')
+
+    class Meta:
+        model = CompanySave
+        fields = ['id', 'company', 'company_name', 'company_logo', 'created_at']
+        read_only_fields = ['user', 'created_at']

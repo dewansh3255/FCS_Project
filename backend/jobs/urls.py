@@ -3,6 +3,9 @@ from .views import (
     DownloadResumeView, ResumeUploadView, ResumeListView, DeleteResumeView,
     AdminAllResumesListView, AdminDownloadResumeView,
     CompanyListCreateView, CompanyDetailView, CompanyEmployeeManageView,
+    CompanyAccessGrantView, CompanyAccessRevokeView,
+    CompanyPostListCreateView, CompanyPostDetailView,
+    CompanySaveView, SavedCompaniesListView,
     JobListCreateView, JobDetailView, JobApplicationsListView,
     ApplicationListCreateView, ApplicationDetailView, DownloadApplicationResumeView,
 )
@@ -11,25 +14,39 @@ urlpatterns = [
     # Resume
     path('resume/upload/', ResumeUploadView.as_view(), name='upload_resume'),
     path('resume/', ResumeListView.as_view(), name='list_resumes'),
-    path('resume/<int:pk>/download/', DownloadResumeView.as_view(), name='download_resume'),
+    path('resume/<int:pk>/download/',
+         DownloadResumeView.as_view(), name='download_resume'),
     path('resume/<int:pk>/', DeleteResumeView.as_view(), name='delete_resume'),
-    
+
     # Admin - All Resumes
-    path('admin/resumes/', AdminAllResumesListView.as_view(), name='admin_all_resumes'),
-    path('admin/resumes/<int:resume_id>/download/', AdminDownloadResumeView.as_view(), name='admin_download_resume'),
+    path('admin/resumes/', AdminAllResumesListView.as_view(),
+         name='admin_all_resumes'),
+    path('admin/resumes/<int:resume_id>/download/',
+         AdminDownloadResumeView.as_view(), name='admin_download_resume'),
 
     # Companies
     path('companies/', CompanyListCreateView.as_view(), name='company_list'),
     path('companies/<int:pk>/', CompanyDetailView.as_view(), name='company_detail'),
-    path('companies/<int:company_id>/employees/', CompanyEmployeeManageView.as_view(), name='company_employees'),
+    path('companies/<int:company_id>/employees/',
+         CompanyEmployeeManageView.as_view(), name='company_employees'),
+    path('companies/<int:company_id>/access/grant/', CompanyAccessGrantView.as_view(), name='company_access_grant'),
+    path('companies/<int:company_id>/access/revoke/<int:recruiter_id>/', CompanyAccessRevokeView.as_view(), name='company_access_revoke'),
+    path('companies/<int:company_id>/posts/', CompanyPostListCreateView.as_view(), name='company_posts_list'),
+    path('companies/posts/<int:pk>/', CompanyPostDetailView.as_view(), name='company_post_detail'),
+    path('companies/<int:company_id>/save/', CompanySaveView.as_view(), name='company_save'),
+    path('companies/saved/', SavedCompaniesListView.as_view(), name='saved_companies'),
 
     # Jobs
     path('jobs/', JobListCreateView.as_view(), name='job_list'),
     path('jobs/<int:pk>/', JobDetailView.as_view(), name='job_detail'),
-    path('jobs/<int:job_id>/applications/', JobApplicationsListView.as_view(), name='job_applications'),
+    path('jobs/<int:job_id>/applications/',
+         JobApplicationsListView.as_view(), name='job_applications'),
 
     # Applications
-    path('applications/', ApplicationListCreateView.as_view(), name='application_list'),
-    path('applications/<int:pk>/', ApplicationDetailView.as_view(), name='application_detail'),
-    path('applications/<int:application_id>/resume/', DownloadApplicationResumeView.as_view(), name='download_application_resume'),
+    path('applications/', ApplicationListCreateView.as_view(),
+         name='application_list'),
+    path('applications/<int:pk>/', ApplicationDetailView.as_view(),
+         name='application_detail'),
+    path('applications/<int:application_id>/resume/',
+         DownloadApplicationResumeView.as_view(), name='download_application_resume'),
 ]

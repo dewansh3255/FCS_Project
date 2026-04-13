@@ -23,8 +23,8 @@ interface Notif {
 
 const timeAgo = (iso: string) => {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60)    return 'now';
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m`;
+  if (diff < 60) return 'now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
   return new Date(iso).toLocaleDateString();
 };
@@ -38,12 +38,12 @@ const NOTIF_ICON: Record<string, string> = {
 };
 
 export default function Navbar({ role, username }: NavbarProps) {
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Search ─────────────────────────────────────────────────────────────
   const [searchInput, setSearchInput] = useState('');
-  
+
   useEffect(() => {
     const q = new URLSearchParams(location.search).get('q');
     if (q !== null) {
@@ -58,9 +58,9 @@ export default function Navbar({ role, username }: NavbarProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Notification panel ─────────────────────────────────────────────────
-  const [showNotifs, setShowNotifs]     = useState(false);
-  const [notifs, setNotifs]             = useState<Notif[]>([]);
-  const [unreadCount, setUnreadCount]   = useState(0);
+  const [showNotifs, setShowNotifs] = useState(false);
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [respondingId, setRespondingId] = useState<number | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -147,13 +147,14 @@ export default function Navbar({ role, username }: NavbarProps) {
 
   // ── Nav links ───────────────────────────────────────────────────────────
   const links = [
-    { label: 'Home',         path: '/dashboard',   roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
-    { label: 'People',       path: '/people',       roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
-    { label: 'Jobs',         path: '/jobs',         roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
+    { label: 'Home', path: '/dashboard', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
+    { label: 'People', path: '/people', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
+    { label: 'Jobs', path: '/jobs', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
+    { label: 'Companies', path: '/companies', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
     { label: 'Applications', path: '/applications', roles: ['CANDIDATE'] },
-    { label: 'Post Job',     path: '/recruiter',    roles: ['RECRUITER'] },
-    { label: 'Admin',        path: '/admin-panel',  roles: ['ADMIN'] },
-    { label: 'My Network',   path: '/network-graph',roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
+    { label: 'Post Job', path: '/recruiter', roles: ['RECRUITER'] },
+    { label: 'Admin', path: '/admin-panel', roles: ['ADMIN'] },
+    { label: 'My Network', path: '/network-graph', roles: ['CANDIDATE', 'RECRUITER', 'ADMIN'] },
   ];
   const currentRole = role || 'CANDIDATE';
   const visible = links.filter(l => l.roles.includes(currentRole));
@@ -235,7 +236,7 @@ export default function Navbar({ role, username }: NavbarProps) {
                     color: '#fff', fontSize: 12, outline: 'none', width: 140,
                   }}
                   onFocus={e => (e.target.style.background = 'rgba(255,255,255,0.13)')}
-                  onBlur={e  => (e.target.style.background = 'rgba(255,255,255,0.08)')}
+                  onBlur={e => (e.target.style.background = 'rgba(255,255,255,0.08)')}
                 />
               </div>
             </form>
@@ -420,9 +421,9 @@ export default function Navbar({ role, username }: NavbarProps) {
                   )}
 
                   {[
-                    { icon: '👤', label: 'My Profile',    action: () => navigate('/my-profile') },
-                    { icon: '⚙️', label: 'Settings',      action: () => navigate('/settings') },
-                    { icon: '🌐', label: 'Network Graph',  action: () => navigate('/network-graph') },
+                    { icon: '👤', label: 'My Profile', action: () => navigate('/my-profile') },
+                    { icon: '⚙️', label: 'Settings', action: () => navigate('/settings') },
+                    { icon: '🌐', label: 'Network Graph', action: () => navigate('/network-graph') },
                   ].map(item => (
                     <button
                       key={item.label}
