@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { getMyProfile, API_BASE_URL } from '../services/api';
+import { getMyProfile, API_BASE_URL, secureFetch } from '../services/api';
 
 export default function CompanyForm() {
   const navigate = useNavigate();
@@ -120,10 +120,14 @@ export default function CompanyForm() {
       const method = id ? 'PUT' : 'POST';
       const url = id ? `${API_BASE_URL}/api/jobs/companies/${id}/` : `${API_BASE_URL}/api/jobs/companies/`;
 
-      const response = await fetch(url, {
+      // For multipart form data, we need to pass it through secureFetch
+      // Don't set Content-Type - let browser set it with boundary
+      const response = await secureFetch(url, {
         method,
-        credentials: 'include',
         body: formDataObj,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        }
       });
 
       if (!response.ok) {

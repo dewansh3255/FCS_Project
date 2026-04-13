@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { getMyProfile, API_BASE_URL } from '../services/api';
+import { getMyProfile, API_BASE_URL, secureFetch } from '../services/api';
 
 export default function CompanyDetail() {
   const navigate = useNavigate();
@@ -84,9 +84,8 @@ export default function CompanyDetail() {
 
     setPostingComment(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/jobs/companies/${id}/posts/`, {
+      const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/${id}/posts/`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newPostContent }),
       });
