@@ -547,10 +547,9 @@ export default function ChatWidget() {
                     value={selectedUser?.id || ""}>
                     <option value="" disabled>Select user...</option>
                     {users
-                      .filter(u => u.is_connected || u.id === selectedUser?.id)
                       .map(u => (
                         <option key={u.id} value={u.id}>
-                          @{u.username} {!u.is_connected ? '(Applicant)' : ''}
+                          @{u.username} {!u.is_connected ? (u.role === 'CANDIDATE' ? '(Applicant)' : '(Recruiter)') : ''}
                         </option>
                       ))
                     }

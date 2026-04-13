@@ -529,7 +529,8 @@ class UserListView(APIView):
             result.append({
                 'id': u.id,
                 'username': u.username,
-                'is_connected': u.id in pure_connected_ids
+                'is_connected': u.id in pure_connected_ids,
+                'role': u.role
             })
         return Response(result, status=status.HTTP_200_OK)
 
