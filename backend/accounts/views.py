@@ -428,51 +428,59 @@ class MessageListCreateView(generics.ListCreateAPIView):
         sender_role = getattr(sender, 'role', '')
         recipient_role = getattr(recipient, 'role', '')
 
-        # ── Rule 1: RECRUITER → CANDIDATE ────────────────────────────────
-        # Allowed if the candidate applied to any job belonging to a company
-        # where the recruiter is the owner OR is listed as an employee.
-        if sender_role == 'RECRUITER' and recipient_role == 'CANDIDATE':
-            # Companies the recruiter owns or is an employee of
-            recruiter_company_ids = Company.objects.filter(
+        # ── Path 1: Check ACCEPTED connection — always allowed ────────────
+        from .models import Connection
+        is_connected = Connection.objects.filter(
+            Q(sender=sender, receiver=recipient) | Q(sender=recipient, receiver=sender),
+            status='ACCEPTED'
+        ).exists()
+        if is_connected:
+            serializer.save(sender=sender)
+            return
+
+        # ── Path 2: RECRUITER initiating to an applicant ──────────────────
+        # Allowed if sender is a RECRUITER and recipient has applied to any
+        # job in the recruiter's company (as owner OR employee), irrespective
+        # of the recipient's role field.
+        if sender_role == 'RECRUITER':
+            recruiter_company_ids = list(Company.objects.filter(
                 Q(owner=sender) | Q(employees=sender)
-            ).values_list('id', flat=True)
+            ).values_list('id', flat=True))
 
-            applied = Application.objects.filter(
-                applicant=recipient,
-                job__company_id__in=recruiter_company_ids
-            ).exists()
+            if recruiter_company_ids:
+                applied = Application.objects.filter(
+                    applicant=recipient,
+                    job__company_id__in=recruiter_company_ids
+                ).exists()
+                if applied:
+                    serializer.save(sender=sender)
+                    return
 
-            if not applied:
-                raise PermissionDenied(
-                    "You can only message candidates who have applied to your company's jobs."
-                )
+            raise PermissionDenied(
+                "You can only message applicants who have applied to your company's jobs, "
+                "or users you are connected with."
+            )
 
-        # ── Rule 2: CANDIDATE → RECRUITER ────────────────────────────────
-        # Allowed only if the recruiter has already sent the candidate a message first.
-        elif sender_role == 'CANDIDATE' and recipient_role == 'RECRUITER':
+        # ── Path 3: CANDIDATE replying to a recruiter who messaged first ──
+        if sender_role == 'CANDIDATE' and recipient_role == 'RECRUITER':
             recruiter_messaged_first = Message.objects.filter(
                 sender=recipient,
                 recipient=sender
             ).exists()
-            if not recruiter_messaged_first:
-                raise PermissionDenied(
-                    "You can only reply to a recruiter after they have contacted you first."
-                )
+            if recruiter_messaged_first:
+                serializer.save(sender=sender)
+                return
+            raise PermissionDenied(
+                "You can only reply to a recruiter after they have contacted you first."
+            )
 
-        # ── Rule 3: All other combinations (candidate↔candidate, etc.) ───
-        # Require an accepted connection.
-        else:
-            from .models import Connection
-            connected = Connection.objects.filter(
-                Q(sender=sender, receiver=recipient) | Q(sender=recipient, receiver=sender),
-                status='ACCEPTED'
-            ).exists()
-            if not connected:
-                raise PermissionDenied(
-                    "You can only send direct messages to your connections."
-                )
+        # ── Path 4: Everything else requires a connection ─────────────────
+        raise PermissionDenied(
+            "You can only send direct messages to your connections."
+        )
 
-        serializer.save(sender=sender)
+
+
 
 
 class UserListView(APIView):
