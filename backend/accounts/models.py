@@ -5,6 +5,8 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
+from datetime import timedelta
 
 
 class User(AbstractUser):
@@ -251,6 +253,30 @@ class Report(models.Model):
     reason = models.TextField()
     is_resolved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class SessionActivity(models.Model):
+    """
+    SECURITY FIX #6: Session Activity Tracking
+    Tracks user session activity for timeout enforcement (5 minutes)
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE, 
+        related_name='session_activity'
+    )
+    last_activity = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Session activity for {self.user.username}"
+
+    @property
+    def is_session_valid(self):
+        """Check if session is valid (within 5-minute timeout)"""
+        timeout_duration = timedelta(minutes=5)
+        return (timezone.now() - self.last_activity) <= timeout_duration
 
 
 # --- SIGNALS ---

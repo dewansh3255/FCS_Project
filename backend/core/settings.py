@@ -1,18 +1,32 @@
 from pathlib import Path
 import os
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key')
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG or os.environ.get('ENV') == 'production':
+        raise ValueError("SECRET_KEY environment variable must be set in production")
+    SECRET_KEY = 'django-insecure-dev-key-do-not-use-in-production'
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost').split(',')
 
 CSRF_TRUSTED_ORIGINS = ['https://localhost', 'http://localhost', 'https://192.168.2.239', 'http://192.168.2.239']
 CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Strict'
+CSRF_COOKIE_DOMAIN = os.environ.get('CSRF_COOKIE_DOMAIN', 'localhost')
+CSRF_COOKIE_PATH = '/'
+
 SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Strict'
+SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN', 'localhost')
+SESSION_COOKIE_PATH = '/'
 
 # Application definition
 INSTALLED_APPS = [
@@ -40,6 +54,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'accounts.middleware.SessionActivityMiddleware',
+    'accounts.middleware.SessionTimeoutMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -116,6 +132,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'ALGORITHM': 'HS256',
 }
 
 # Internationalization
@@ -157,4 +174,6 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # --- CORS SETTINGS (Allow React to talk to Django) ---
-CORS_ALLOW_ALL_ORIGINS = True # For dev only. In prod, restrict to domain.
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS_ALLOW_CREDENTIALS = True

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DefaultUserAdmin
-from .models import User, UserKeys, Profile, Message,ChatGroup, GroupMember, GroupMessage
-from .models import AuditLog
+from .models import User, UserKeys, Profile, Message, ChatGroup, GroupMember, GroupMessage
+from .models import AuditLog, SessionActivity
 
 @admin.register(User)
 class UserAdmin(DefaultUserAdmin):
@@ -61,3 +61,10 @@ class GroupMessageAdmin(admin.ModelAdmin):
     list_filter = ('group',)
     # Prevent superuser from reading or tampering with the encrypted content
     readonly_fields = ('encrypted_content',)
+
+@admin.register(SessionActivity)
+class SessionActivityAdmin(admin.ModelAdmin):
+    list_display = ('user', 'last_activity', 'created_at', 'is_active', 'is_session_valid')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('user__username',)
+    readonly_fields = ('created_at', 'last_activity')

@@ -2,6 +2,8 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import PermissionDenied
+from django.middleware.csrf import CsrfViewMiddleware
+from django.conf import settings
 
 class CookieJWTAuthentication(JWTAuthentication):
     """
@@ -10,10 +12,33 @@ class CookieJWTAuthentication(JWTAuthentication):
     Enforces CSRF to prevent cross-site request forgery attacks.
     """
     def enforce_csrf(self, request):
-        # Anti-CSRF protection: Require explicit custom header for state-changing methods
+        # Proper Django CSRF token validation
+        # Check for CSRF token in POST data, request body, or X-CSRFToken header
+        csrf_middleware = CsrfViewMiddleware(lambda r: None)
+        
         if request.method not in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
-            if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
-                raise PermissionDenied("CSRF Failed: X-Requested-With header missing or invalid.")
+            # Check for CSRF token
+            csrf_token = request.POST.get('csrfmiddlewaretoken')
+            if not csrf_token:
+                csrf_token = request.META.get('HTTP_X_CSRFTOKEN')
+            if not csrf_token:
+                # Try to get from request body (for JSON requests)
+                try:
+                    import json
+                    body = json.loads(request.body)
+                    csrf_token = body.get('csrfmiddlewaretoken')
+                except:
+                    pass
+            
+            if not csrf_token:
+                raise PermissionDenied("CSRF token missing or invalid.")
+            
+            # Validate the token
+            csrf_middleware.process_request(request)
+            try:
+                csrf_middleware.process_view(request, None, (), {})
+            except PermissionDenied:
+                raise PermissionDenied("CSRF token validation failed.")
 
     def authenticate(self, request):
         # 1. First, check the standard Authorization header (good for testing)

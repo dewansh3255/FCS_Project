@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 import random
 import pyotp
 import secrets
+from secrets import compare_digest
 import hashlib
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
@@ -521,7 +522,7 @@ class ProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
 
 class LogoutView(APIView):
     """Securely clear the authentication cookies."""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         response = Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
@@ -1814,11 +1815,17 @@ class VerifyBackupCodeView(APIView):
                 'attempts_remaining': 0,
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
-        # 2. Hash the submitted code and look for a match
+        # 2. Hash the submitted code and look for a match using constant-time comparison
         code_hash = hashlib.sha256(backup_code.encode()).hexdigest()
-        match = BackupCode.objects.filter(
-            user=user, code_hash=code_hash, is_used=False
-        ).first()
+        matches = BackupCode.objects.filter(
+            user=user, is_used=False
+        )
+        
+        match = None
+        for backup in matches:
+            if compare_digest(backup.code_hash, code_hash):
+                match = backup
+                break
 
         if not match:
             locked_now, attempts_left = _record_backup_code_failure(user_id)
