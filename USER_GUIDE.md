@@ -617,15 +617,21 @@ A: Check:
 If you encounter issues not covered in this guide:
 
 1. **In-app Support** — Click "Help" or "?" icon for live chat
-2. **Email** — support@fcsproject.local
-3. **Documentation** — Check README.md in project repository
+2. **Email** — dewansh25067@iiitd.ac.in
+3. **Documentation** — Check README.md or USER_GUIDE.md in project repository
+
+### Project Contact
+
+**Name:** Dewansh Khandelwal  
+**Email:** dewansh25067@iiitd.ac.in  
+**Organization:** IIIT Delhi
 
 ### Report Security Issues
 
 If you discover a security vulnerability:
 
 1. **Do NOT** post it publicly
-2. **Email** security@fcsproject.local with details
+2. **Email** dewansh25067@iiitd.ac.in with subject "Security Issue"
 3. Include steps to reproduce (if possible)
 4. We'll investigate and credit you in fixes
 
@@ -637,6 +643,7 @@ We'd love to hear your feedback!
 - Tell us what you like
 - Suggest improvements
 - Report bugs
+- Email: dewansh25067@iiitd.ac.in
 
 ---
 

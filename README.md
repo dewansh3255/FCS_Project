@@ -287,3 +287,13 @@ docker-compose ps            # Check service status
 ## License
 
 Academic project developed for Foundations of Computer Security course at IIIT Delhi.
+
+---
+
+## Contact
+
+**Project Lead:** Dewansh Khandelwal  
+**Email:** dewansh25067@iiitd.ac.in  
+**Institution:** IIIT Delhi
+
+For questions, feedback, or support, please contact the email above.
