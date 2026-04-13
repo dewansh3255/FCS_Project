@@ -87,8 +87,10 @@ function UserCardUI({
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-all duration-200 flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGradient(user.username)} flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0`}>
-          {user.username[0].toUpperCase()}
+        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGradient(user.username)} flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0 overflow-hidden`}>
+          {(user as any).profile_picture_url
+            ? <img src={(user as any).profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+            : user.username[0].toUpperCase()}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-gray-900 truncate">{user.username}</p>
@@ -303,9 +305,11 @@ export default function People() {
                       key={i}
                       onClick={() => navigate(`/profile/${v.username}`)}
                       title={v.username}
-                      className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(v.username)} border-2 border-white flex items-center justify-center text-white text-xs font-bold hover:scale-110 transition-transform`}
+                      className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(v.username)} border-2 border-white flex items-center justify-center text-white text-xs font-bold hover:scale-110 transition-transform overflow-hidden`}
                     >
-                      {v.username[0].toUpperCase()}
+                      {v.profile_picture_url
+                        ? <img src={v.profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                        : v.username[0].toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -355,8 +359,10 @@ export default function People() {
                     {connections.connections.map(conn => (
                       <div key={conn.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-all">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGradient(conn.username)} flex items-center justify-center text-white font-bold text-lg shadow-sm`}>
-                            {conn.username[0].toUpperCase()}
+                          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarGradient(conn.username)} flex items-center justify-center text-white font-bold text-lg shadow-sm overflow-hidden shrink-0`}>
+                            {(conn as any).profile_picture_url
+                              ? <img src={(conn as any).profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                              : conn.username[0].toUpperCase()}
                           </div>
                           <div className="min-w-0">
                             <p className="font-semibold text-gray-900 truncate">{conn.username}</p>

@@ -15,6 +15,7 @@ interface Notif {
   notif_type: string;
   message: string;
   sender_username: string | null;
+  sender_profile_picture_url: string | null;
   is_read: boolean;
   created_at: string;
   related_connection_id: number | null;
@@ -308,8 +309,35 @@ export default function Navbar({ role, username }: NavbarProps) {
                           onClick={() => { if (n.notif_type !== 'CONNECTION_REQUEST') handleNotifClick(n); }}
                         >
                           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                            {/* Icon */}
-                            <span style={{ fontSize: 20, flexShrink: 0 }}>{NOTIF_ICON[n.notif_type] ?? '🔔'}</span>
+                            {/* Avatar with sender profile picture */}
+                            {n.sender_username && (
+                              <div
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 8,
+                                  background: n.sender_profile_picture_url
+                                    ? `url(${n.sender_profile_picture_url})`
+                                    : ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'][n.sender_username.charCodeAt(0) % 4],
+                                  backgroundSize: 'cover',
+                                  backgroundPosition: 'center',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#fff',
+                                  fontSize: 14,
+                                  fontWeight: 700,
+                                  flexShrink: 0,
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                {!n.sender_profile_picture_url && n.sender_username[0].toUpperCase()}
+                              </div>
+                            )}
+                            {/* Icon (if no sender) */}
+                            {!n.sender_username && (
+                              <span style={{ fontSize: 20, flexShrink: 0 }}>{NOTIF_ICON[n.notif_type] ?? '🔔'}</span>
+                            )}
 
                             {/* Content */}
                             <div style={{ flex: 1, minWidth: 0 }}>

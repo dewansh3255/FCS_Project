@@ -156,8 +156,10 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   {suggestions.map((s, i) => (
                     <div key={s.id} className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${GRAD(s.username)} flex items-center justify-center text-white font-bold text-sm shrink-0`}>
-                        {s.username[0].toUpperCase()}
+                      <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${GRAD(s.username)} flex items-center justify-center text-white font-bold text-sm shrink-0 overflow-hidden`}>
+                        {s.profile_picture_url
+                          ? <img src={s.profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                          : s.username[0].toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
                         <button onClick={() => navigate(`/profile/${s.username}`)}
@@ -261,8 +263,10 @@ export default function Dashboard() {
               feed.map(post => (
                 <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${GRAD(post.author_username)} flex items-center justify-center text-white font-bold shrink-0`}>
-                      {post.author_username[0].toUpperCase()}
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${GRAD(post.author_username)} flex items-center justify-center text-white font-bold shrink-0 overflow-hidden`}>
+                      {post.author_profile_picture_url
+                        ? <img src={post.author_profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                        : post.author_username[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <button onClick={() => navigate(`/profile/${post.author_username}`)}

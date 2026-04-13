@@ -204,8 +204,10 @@ export default function ProfilePage() {
 
           <div className="px-6 pb-6">
             {/* Avatar */}
-            <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGradient(profile.username)} flex items-center justify-center text-white font-bold text-3xl shadow-lg -mt-10 mb-4 border-4 border-white`}>
-              {profile.username[0].toUpperCase()}
+            <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGradient(profile.username)} flex items-center justify-center text-white font-bold text-3xl shadow-lg -mt-10 mb-4 border-4 border-white overflow-hidden`}>
+              {profile.profile_picture_url
+                ? <img src={profile.profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                : profile.username[0].toUpperCase()}
             </div>
 
             {/* Name row */}

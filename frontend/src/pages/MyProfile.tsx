@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import {
   getMyProfile, updateMyProfile,
   uploadResume, getMyResumes, downloadResumeUrl, deleteResume,
-  getMyProfileViewers,
+  getMyProfileViewers, uploadProfilePicture,
 } from '../services/api';
 import { signFileDocument } from '../utils/crypto';
 import { useCrypto } from '../contexts/CryptoContext';
@@ -85,6 +85,9 @@ export default function MyProfile() {
     viewers: [], view_count: 0, hidden: false,
   });
 
+  const [pictureFile, setPictureFile] = useState<File | null>(null);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+
   useEffect(() => {
     loadAll();
   }, [navigate]);
@@ -134,7 +137,42 @@ export default function MyProfile() {
     finally { setSavingPrivacy(false); }
   };
 
-  // Profile picture upload removed — initials avatar is used instead.
+  const handlePictureUpload = async () => {
+    if (!pictureFile) return;
+    setError('');
+    setUploadingPicture(true);
+    try {
+      await uploadProfilePicture(pictureFile);
+      setPictureFile(null);
+      notify('Profile picture updated!');
+      loadAll();
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload picture');
+    } finally {
+      setUploadingPicture(false);
+    }
+  };
+
+  const handlePictureSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image is too large. Please upload an image under 10 MB.');
+      return;
+    }
+    
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      setError('Invalid file type. Please upload a JPG, PNG, GIF, or WebP image.');
+      return;
+    }
+    
+    setPictureFile(file);
+    setError('');
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
@@ -220,11 +258,19 @@ export default function MyProfile() {
           <div className="h-28" style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #3b82f6 60%, #06b6d4 100%)' }} />
           <div className="px-6 pb-6">
             <div className="flex items-end gap-4 -mt-10 mb-3">
-              {/* Avatar — initials only */}
+              {/* Avatar with picture upload option */}
               <div className="relative shrink-0">
                 <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${GRAD(profile.username)} flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-md overflow-hidden`}>
-                  {profile.username[0].toUpperCase()}
+                  {profile.profile_picture_url
+                    ? <img src={profile.profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                    : profile.username[0].toUpperCase()}
                 </div>
+                <label className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full cursor-pointer hover:bg-blue-700 transition shadow-md" title="Upload profile picture">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <input type="file" accept="image/*" className="hidden" onChange={handlePictureSelect} />
+                </label>
               </div>
 
               <div className="pb-1">
@@ -256,6 +302,31 @@ export default function MyProfile() {
             </div>
           </div>
         </div>
+
+        {/* ── Picture Upload Section ─────────────────────────────── */}
+        {pictureFile && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 mb-6 shadow-sm">
+            <p className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+              <span>📷</span> {pictureFile.name}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handlePictureUpload}
+                disabled={uploadingPicture}
+                className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {uploadingPicture ? 'Uploading…' : 'Upload Picture'}
+              </button>
+              <button
+                onClick={() => setPictureFile(null)}
+                disabled={uploadingPicture}
+                className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Tabs ──────────────────────────────────────────────── */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
@@ -491,8 +562,10 @@ export default function MyProfile() {
                   {viewers.viewers.map((v, i) => (
                     <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${GRAD(v.username)} flex items-center justify-center text-white font-bold shrink-0`}>
-                          {v.username[0].toUpperCase()}
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${GRAD(v.username)} flex items-center justify-center text-white font-bold shrink-0 overflow-hidden`}>
+                          {v.profile_picture_url
+                            ? <img src={v.profile_picture_url} className="w-full h-full object-cover" alt="Profile" />
+                            : v.username[0].toUpperCase()}
                         </div>
                         <div>
                           <p className="font-semibold text-gray-900 text-sm">{v.username}</p>

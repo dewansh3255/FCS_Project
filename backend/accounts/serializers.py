@@ -62,6 +62,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     role = serializers.CharField(source='user.role', read_only=True)
     profile_picture_url = serializers.SerializerMethodField()
+    profile_picture = serializers.ImageField(required=False, allow_null=True, write_only=True)
     is_email_verified = serializers.BooleanField(source='user.is_email_verified', read_only=True)
     id = serializers.IntegerField(source='user.id', read_only=True)
 
@@ -69,7 +70,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = Profile
         fields = [
             'id', 'username', 'role', 'headline', 'bio', 'location', 'skills',
-            'education', 'experience', 'profile_picture_url',
+            'education', 'experience', 'profile_picture', 'profile_picture_url',
             'is_headline_public', 'is_bio_public', 'is_location_public',
             'is_skills_public', 'is_education_public', 'is_experience_public',
             'is_view_history_public','is_email_verified'
@@ -163,11 +164,20 @@ class ConnectionSerializer(serializers.ModelSerializer):
 
 class NotificationSerializer(serializers.ModelSerializer):
     sender_username = serializers.ReadOnlyField(source='sender.username')
+    sender_profile_picture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
         fields = [
             'id', 'notif_type', 'message', 'sender_username',
-            'is_read', 'created_at', 'related_connection_id',
+            'sender_profile_picture_url', 'is_read', 'created_at', 'related_connection_id',
         ]
         read_only_fields = ['notif_type', 'message', 'sender_username', 'created_at', 'related_connection_id']
+    
+    def get_sender_profile_picture_url(self, obj):
+        try:
+            if obj.sender.profile.profile_picture:
+                return obj.sender.profile.profile_picture.url
+        except Exception:
+            pass
+        return None

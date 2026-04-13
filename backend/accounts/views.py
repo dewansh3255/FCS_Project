@@ -832,14 +832,17 @@ class UserSearchView(APIView):
 
             try:
                 headline = user.profile.headline if user.profile.is_headline_public else ''
+                profile_picture_url = user.profile.profile_picture.url if user.profile.profile_picture else None
             except Exception:
                 headline = ''
+                profile_picture_url = None
 
             results.append({
                 'id': user.id,
                 'username': user.username,
                 'headline': headline,
                 'role': user.role,
+                'profile_picture_url': profile_picture_url,
                 'connection_status': conn_status,
                 'connection_id': conn_id,
             })
@@ -929,13 +932,16 @@ class ConnectionListView(APIView):
         other = conn.receiver if conn.sender == me else conn.sender
         try:
             headline = other.profile.headline if other.profile.is_headline_public else ''
+            profile_picture_url = other.profile.profile_picture.url if other.profile.profile_picture else None
         except Exception:
             headline = ''
+            profile_picture_url = None
         return {
             'id': conn.id,
             'username': other.username,
             'role': other.role,
             'headline': headline,
+            'profile_picture_url': profile_picture_url,
             'status': conn.status,
             'created_at': conn.created_at,
         }
@@ -1073,11 +1079,12 @@ class FeedView(APIView):
 
     def get(self, request):
         ids = self._connected_ids(request.user)
-        posts = Post.objects.filter(author_id__in=ids).order_by('-created_at')[:50]
+        posts = Post.objects.filter(author_id__in=ids).select_related('author__profile').order_by('-created_at')[:50]
         return Response([{
             'id': p.id,
             'author_username': p.author.username,
             'author_role': p.author.role,
+            'author_profile_picture_url': p.author.profile.profile_picture.url if p.author.profile.profile_picture else None,
             'content': p.content,
             'created_at': p.created_at,
             'is_mine': p.author_id == request.user.id,
@@ -1145,15 +1152,20 @@ class ProfileViewersView(APIView):
         recent = ProfileView.objects.filter(
             viewed_user=request.user,
             timestamp__gte=timezone.now() - timedelta(days=30)
-        ).order_by('-timestamp').select_related('viewer')
+        ).order_by('-timestamp').select_related('viewer__profile')
 
         seen, viewers = set(), []
         for v in recent:
             if v.viewer_id not in seen:
                 seen.add(v.viewer_id)
+                try:
+                    profile_picture_url = v.viewer.profile.profile_picture.url if v.viewer.profile.profile_picture else None
+                except Exception:
+                    profile_picture_url = None
                 viewers.append({
                     'username': v.viewer.username,
                     'role': v.viewer.role,
+                    'profile_picture_url': profile_picture_url,
                     'viewed_at': v.timestamp,
                 })
             if len(viewers) >= 10:
@@ -1245,13 +1257,16 @@ class ConnectionSuggestionsView(APIView):
                 u = User.objects.select_related('profile').get(id=uid)
                 try:
                     headline = u.profile.headline if u.profile.is_headline_public else ''
+                    profile_picture_url = u.profile.profile_picture.url if u.profile.profile_picture else None
                 except Exception:
                     headline = ''
+                    profile_picture_url = None
                 results.append({
                     'id': u.id,
                     'username': u.username,
                     'headline': headline,
                     'role': u.role,
+                    'profile_picture_url': profile_picture_url,
                     'mutual_connections': mutuals,
                     'connection_status': 'none',
                     'connection_id': None,
