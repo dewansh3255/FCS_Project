@@ -1,119 +1,99 @@
-# SecureJobs — Secure Job Search & Professional Networking Platform
+# FCS Project — Secure Job Search & Professional Networking Platform
 
-> CSE 345/545 Foundations to Computer Security — Course Project
-> IIIT Delhi | January–April 2026
+> Foundations of Computer Security Course Project
+> IIIT Delhi | 2026
 
-A full-stack, security-first professional networking and job search platform implementing end-to-end encryption, PKI-backed trust, tamper-evident audit logging, and modern authentication — built with Django, React, PostgreSQL, Redis, and Nginx.
+A full-stack, security-first professional networking and job search platform implementing end-to-end encryption, PKI-backed trust, tamper-evident audit logging, TOTP-based 2FA, and JWT-based authentication — built with Django REST Framework, React/TypeScript, PostgreSQL, Redis, and Nginx with Docker containerization.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Key Features](#key-features)
 - [Security Architecture](#security-architecture)
-- [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
-- [Environment Variables](#environment-variables)
-- [API Reference](#api-reference)
-- [Milestone Progress](#milestone-progress)
-- [Team](#team)
+- [Deployment](#deployment)
+- [API Overview](#api-overview)
+- [Recent Fixes](#recent-fixes)
 
 ---
 
 ## Overview
 
-SecureJobs is designed from the ground up with security as a first-class requirement. Every feature — from user registration to resume upload to private messaging — is built with confidentiality, integrity, and availability in mind.
+FCS Project is a modern, security-focused platform for job searching and professional networking. The platform implements industry-standard security practices including:
 
-The platform supports three user roles:
+- **2FA via TOTP** — All users must verify with authenticator apps
+- **JWT Authentication** — Stateless token-based auth in HttpOnly, Secure cookies
+- **End-to-End Encryption** — Messages encrypted client-side with RSA-AES hybrid encryption
+- **Resume Encryption** — All resumes encrypted at rest with per-file keys
+- **Audit Logging** — Hash-chained tamper-evident logs for compliance
+- **Role-Based Access** — Candidates, Recruiters, and Admins with granular permissions
+
+### User Roles
 
 | Role | Capabilities |
 |------|-------------|
-| **Candidate** | Create profile, upload resumes, search and apply for jobs, send/receive encrypted messages, track application status |
-| **Recruiter** | Create company pages, post job listings, view applicants, update application status, message candidates |
-| **Admin** | View and manage all users, access tamper-evident audit logs, verify hash chain integrity |
+| **Candidate** | Register, upload resumes, search jobs, apply, track applications, send encrypted messages |
+| **Recruiter** | Create company pages, post jobs, view applicants, update statuses, message candidates |
+| **Admin** | Manage users, verify audit log integrity, system monitoring |
 
 ---
 
 ## Security Architecture
 
 ### Authentication & Session Management
-- **TOTP-based 2FA** — Every user must scan a QR code and verify a 6-digit TOTP code on registration and login (via `pyotp`). No session is established without OTP verification.
-- **JWT in HttpOnly Cookies** — Access and refresh tokens are stored in `HttpOnly`, `Secure`, `SameSite=Lax` cookies — never in `localStorage`. This prevents XSS-based token theft.
-- **Custom Cookie Authentication** — A custom DRF authenticator (`CookieJWTAuthentication`) extracts tokens from cookies, falling back to `Authorization` headers for API testing.
-- **Password Hashing** — Django's `create_user` uses PBKDF2+SHA256 by default. Plaintext passwords are never stored.
+- **TOTP 2FA** — Every user must verify a 6-digit OTP on registration and login via authenticator apps
+- **JWT in HttpOnly Cookies** — Access/refresh tokens stored securely; never in localStorage
+- **Token Expiration** — Access tokens expire in 30 minutes; refresh tokens rotate on use
+- **Custom JWT Authenticator** — `CookieJWTAuthentication` extracts tokens from cookies with Authorization header fallback
 
-### Public Key Infrastructure (PKI)
-- **RSA-2048 Keypair Generation** — Generated client-side using the Web Crypto API (`RSA-OAEP`, `SHA-256`) during registration. The private key never leaves the client in plaintext.
-- **Private Key Wrapping** — The private key is exported as PKCS8, then encrypted with AES-GCM using a key derived from the user's password via PBKDF2 (100,000 iterations). Only the encrypted blob is stored on the server.
-- **Resume Digital Signatures** — Before upload, the resume PDF is signed client-side using `RSA-PSS` with `SHA-256`. The signature is stored alongside the file and displayed with a `✓ Signed` badge.
-- **Company Verification** — PKI infrastructure is in place for verifying company identity.
-
-### End-to-End Encrypted Messaging
-- **Hybrid Encryption** — Each message is encrypted with a freshly generated AES-GCM-256 key. That key is then wrapped with the recipient's RSA-OAEP public key.
-- **Zero Server Knowledge** — The server stores only ciphertext (`encrypted_content`) and the wrapped key (`encrypted_key`). The server cannot read any message.
-- **Client-side Decryption** — On inbox open, the user enters their password to unwrap their private key, which then decrypts the AES key, which decrypts each message.
-
-### Resume Encryption at Rest
-- **Fernet Symmetric Encryption** — Every uploaded resume is encrypted server-side using `cryptography.Fernet` (AES-128-CBC + HMAC-SHA256) before being written to disk. The plaintext file is deleted immediately after encryption.
-- **Per-resume Keys** — Each resume has a unique Fernet key stored in the `ResumeKey` table.
-- **Access Control** — Only the owner and explicitly authorized recruiters can decrypt and download a resume.
-
-### Tamper-Evident Audit Logging
-- **Hash Chaining** — Every audit log entry stores the SHA-256 hash of its own payload plus the hash of the previous entry (`prev_hash`). This creates a blockchain-style chain where tampering any entry invalidates all subsequent hashes.
-- **Client-side Verification** — The Admin Panel includes a "Verify Chain" button that fetches all logs and checks every `prev_hash` matches the previous entry's `current_hash`.
-- **Logged Events** — `REGISTER`, `LOGIN_SUCCESS`, `RESUME_UPLOAD`, and all critical state changes.
+### Cryptography
+- **RSA-2048 Keypairs** — Generated client-side using Web Crypto API
+- **Private Key Wrapping** — Encrypted with AES-GCM using password-derived key (PBKDF2, 100k iterations)
+- **Message Encryption** — Hybrid encryption: AES-GCM-256 key wrapped with recipient's RSA-OAEP public key
+- **Resume Encryption** — Fernet (AES-128-CBC + HMAC-SHA256) with per-file keys
 
 ### Attack Defenses
-- **SQL Injection** — Django ORM parameterizes all queries by default. No raw SQL is used.
-- **XSS** — React's JSX escapes all dynamic content. Django's template engine auto-escapes output.
-- **CSRF** — Django's `CsrfViewMiddleware` is active. `CSRF_TRUSTED_ORIGINS` is set for HTTPS. JWT-in-cookie approach adds an additional layer.
-- **Session Fixation/Hijacking** — JWT tokens are short-lived (30 minutes). Refresh tokens rotate on use (`ROTATE_REFRESH_TOKENS = True`) and are blacklisted after rotation.
-- **HTTPS Enforcement** — Nginx redirects all HTTP traffic to HTTPS. TLS is terminated at the reverse proxy.
+- **SQL Injection** — Django ORM parameterizes all queries
+- **XSS** — React JSX auto-escapes; Django template auto-escape enabled
+- **CSRF** — Middleware-based exemption for stateless JWT endpoints
+- **Token Theft** — HttpOnly cookies prevent XSS-based token theft
+- **Session Hijacking** — Short-lived tokens with automatic refresh rotation
+- **HTTPS Enforcement** — Nginx redirects HTTP to HTTPS; TLS at reverse proxy
 
 ---
 
-## Features
+## Key Features
 
-### Completed (Milestone 2 + March Milestone)
-
-- Secure user registration with TOTP 2FA setup (QR code via `qrcode.react`)
-- Two-step login — password check → OTP verify → JWT cookie issuance
+✅ **Completed:**
+- TOTP-based 2FA with QR code enrollment
+- JWT token authentication with auto-refresh
 - RSA keypair generation and password-protected private key storage
-- User profile with field-level privacy controls (Public / Connections-only)
-- Resume upload with Fernet encryption at rest and RSA-PSS digital signature
-- End-to-end encrypted one-to-one messaging with real-time inbox polling
-- Company page creation and management
-- Job posting with title, description, skills, location, type, salary range, deadline
-- Job search with keyword, type, and location filters
-- Job application workflow with resume attachment and cover note
-- Application status tracking — Applied → Reviewed → Interviewed → Rejected → Offer
-- Recruiter dashboard — view applicants, update status, add feedback notes
-- Hash-chained tamper-evident audit logs
-- Admin panel with chain integrity verification
-- Role-based access control — Candidate, Recruiter, Admin
-- Navbar with role-aware navigation links
-
-### Upcoming (April Milestone)
-
-- OTP virtual keyboard for high-risk actions (password reset, account deletion, resume download)
-- Demonstration of defenses against SQL injection, XSS, CSRF
-- Final documentation submission
+- End-to-end encrypted messaging system
+- Fernet-encrypted resume storage at rest
+- Job posting and search with filters
+- Job application workflow with status tracking
+- Company management and recruiter dashboard
+- Hash-chained audit logs with integrity verification
+- Role-based access control (RBAC)
+- Full Docker containerization
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
+| Component | Technology |
+|-----------|-----------|
 | **Frontend** | React 19, TypeScript, Vite, Tailwind CSS, React Router v7 |
 | **Backend** | Python 3.11, Django 4.2, Django REST Framework |
-| **Authentication** | `djangorestframework-simplejwt`, `pyotp` |
-| **Cryptography** | Web Crypto API (client), `cryptography` library — Fernet (server) |
 | **Database** | PostgreSQL 15 |
-| **Cache / Sessions** | Redis 7 |
-| **Reverse Proxy** | Nginx (HTTPS with self-signed certificate) |
+| **Cache** | Redis 7 |
+| **Reverse Proxy** | Nginx with TLS/SSL |
+| **Authentication** | djangorestframework-simplejwt, pyotp |
+| **Cryptography** | Web Crypto API (client), cryptography library (server) |
 | **Containerization** | Docker, Docker Compose |
 
 ---
@@ -123,187 +103,187 @@ The platform supports three user roles:
 ```
 FCS_Project/
 ├── backend/
-│   ├── accounts/               # User auth, profiles, messaging, audit logs
-│   │   ├── models.py           # User, UserKeys, Profile, Message, AuditLog
-│   │   ├── views.py            # Registration, login, TOTP, keys, messages
-│   │   ├── serializers.py
-│   │   ├── authentication.py   # Custom cookie JWT authenticator
-│   │   ├── audit.py            # Hash-chaining audit log helper
+│   ├── accounts/              # Auth, profiles, messaging, audit logs
+│   │   ├── models.py          # User, UserKeys, Profile, Message, AuditLog
+│   │   ├── views.py           # Registration, login, TOTP, messaging
+│   │   ├── authentication.py  # JWT cookie authenticator
+│   │   ├── audit.py           # Hash-chain audit logging
 │   │   └── urls.py
-│   ├── jobs/                   # Resumes, companies, jobs, applications
-│   │   ├── models.py           # Resume, ResumeKey, Company, Job, Application
-│   │   ├── views.py
-│   │   ├── serializers.py
+│   ├── jobs/                  # Resume, company, job, application management
+│   │   ├── models.py          # Resume, Company, Job, Application
+│   │   ├── views.py           # Job posting, search, applications
 │   │   └── urls.py
-│   ├── core/                   # Django project settings and URLs
-│   │   ├── settings.py
+│   ├── core/                  # Settings and URL routing
+│   │   ├── settings.py        # Django configuration
+│   │   ├── middleware.py      # CSRF exemption middleware
 │   │   └── urls.py
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── pages/
-│       │   ├── Register.tsx    # Registration + TOTP QR setup
-│       │   ├── Login.tsx       # Two-step login
-│       │   ├── Dashboard.tsx   # Profile + resume management
-│       │   ├── Jobs.tsx        # Job search and apply
-│       │   ├── Applications.tsx # Candidate application tracker
-│       │   ├── Recruiter.tsx   # Company + job + applicant management
-│       │   └── AdminPanel.tsx  # Audit log viewer
-│       ├── components/
-│       │   ├── Navbar.tsx      # Role-aware navigation
-│       │   └── ChatWidget.tsx  # E2EE chat widget
-│       ├── services/
-│       │   └── api.ts          # All API call functions
-│       └── utils/
-│           └── crypto.ts       # Web Crypto API — RSA, AES, signing
-├── nginx/
-│   ├── nginx.conf              # HTTPS, proxy rules
-│   └── ssl/                    # Self-signed TLS certificate
-└── docker-compose.yml
+│       ├── pages/             # Page components
+│       ├── components/        # Reusable UI components
+│       ├── services/          # API client
+│       └── utils/             # Crypto utilities
+├── nginx/                     # Reverse proxy configuration
+├── docker-compose.yml         # Container orchestration
+└── run_migrations.sh          # Database setup script
 ```
 
 ---
 
 ## Getting Started
 
-### Prerequisites
-
-- Docker Desktop installed and running
-- Git
-
-### Setup
+### Quick Start with Docker
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/FCS_Project.git
+# Clone repository
+git clone https://github.com/dewansh3255/FCS_Project.git
 cd FCS_Project
 
-# 2. Start all services
+# Start all services
 docker-compose up --build
 
-# 3. Run database migrations
+# Run migrations
 docker-compose exec backend python manage.py migrate
 
-# 4. Create a superuser for Django admin
+# Create admin user (optional)
 docker-compose exec backend python manage.py createsuperuser
-
-# 5. Collect static files (for Django admin panel)
-docker-compose exec backend python manage.py collectstatic --noinput
 ```
 
-### Access
+### Access Points
 
 | Service | URL |
 |---------|-----|
 | **Frontend** | https://localhost |
-| **Django Admin** | https://localhost/admin/ |
-| **Backend API** | https://localhost/api/ |
+| **Django Admin** | https://localhost/admin |
+| **API** | https://localhost/api |
 
-> Accept the self-signed certificate warning in your browser — the connection is still TLS-encrypted. This satisfies the "self-signed or CA-issued certificate" requirement from the project spec.
+> Note: Browser may show SSL certificate warning (self-signed). This is normal for development. Click "Accept" to proceed.
 
-### First Run
+### First Time Setup
 
-1. Go to `https://localhost` and register a new account
+1. Visit https://localhost and register a new account
 2. Scan the QR code with Microsoft Authenticator or Google Authenticator
-3. Enter the 6-digit OTP to complete registration
-4. You will be redirected to the dashboard with your RSA keys automatically generated
+3. Enter the 6-digit OTP to complete 2FA setup
+4. You'll be redirected to the dashboard
+5. Complete your profile and upload resume
+6. Start searching jobs or post as recruiter
 
----
+## Deployment
 
-## Environment Variables
+### Production Checklist
 
-Set in `docker-compose.yml`. For production, move these to a `.env` file.
+```bash
+# 1. SSH to production server
+ssh user@your-server
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SECRET_KEY` | `dev_secret_key_change_in_prod` | Django secret key |
-| `DEBUG` | `True` | Set to `False` in production |
-| `DB_HOST` | `db` | PostgreSQL host |
-| `DB_NAME` | `fcs_project` | Database name |
-| `DB_USER` | `fcs_user` | Database user |
-| `DB_PASS` | `fcs_password` | Database password |
-| `REDIS_HOST` | `redis` | Redis host |
-| `ALLOWED_HOSTS` | `*` | Restrict in production |
+# 2. Clone/pull latest code
+git clone https://github.com/dewansh3255/FCS_Project.git
+cd FCS_Project
+# or: git pull origin main
 
----
+# 3. Start services
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+sleep 20
 
-## API Reference
+# 4. Verify services
+docker-compose ps
+docker-compose logs backend | tail -30
+
+# 5. Check no errors
+docker-compose logs backend | grep -i error
+docker-compose logs backend | grep -i csrf
+```
+
+### Environment Variables
+
+For production, update these in `docker-compose.yml` or use a `.env` file:
+
+```env
+DEBUG=False
+SECRET_KEY=your-production-secret-key-here
+ALLOWED_HOSTS=your-domain.com
+CSRF_TRUSTED_ORIGINS=https://your-domain.com
+DB_HOST=db
+DB_NAME=fcs_project
+DB_USER=fcs_user
+DB_PASS=change-this-password
+REDIS_HOST=redis
+```
+
+## API Overview
 
 ### Authentication
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/auth/register/` | Register new user |
-| `POST` | `/api/auth/login/` | Step 1 — password check |
-| `GET` | `/api/auth/totp/generate/<user_id>/` | Get TOTP QR URI |
-| `POST` | `/api/auth/totp/verify/` | Step 2 — OTP verify + issue cookies |
-| `GET` | `/api/auth/auth-check/` | Verify active session |
+- `POST /api/auth/register/` — Register new user
+- `POST /api/auth/login/` — Step 1: Password verification
+- `POST /api/auth/totp/verify/` — Step 2: OTP verification
+- `GET /api/auth/auth-check/` — Check if authenticated
 
 ### Profile & Keys
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET/PATCH` | `/api/auth/profile/me/` | Get or update own profile |
-| `POST` | `/api/auth/keys/upload/` | Upload RSA public + encrypted private key |
-| `GET` | `/api/auth/keys/me/` | Get own keys |
-| `GET` | `/api/auth/keys/<username>/` | Get another user's public key |
+- `GET/PATCH /api/auth/profile/me/` — Get/update profile
+- `POST /api/auth/keys/upload/` — Upload RSA keypair
+- `GET /api/auth/keys/<username>/` — Get public key
 
 ### Messaging
+- `GET/POST /api/auth/messages/` — Send/receive encrypted messages
+- `GET /api/auth/users/` — List users for messaging
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/auth/messages/` | Fetch encrypted inbox |
-| `POST` | `/api/auth/messages/` | Send encrypted message |
-| `GET` | `/api/auth/users/` | List users for chat |
+### Jobs
+- `GET/POST /api/jobs/jobs/` — List/create job postings
+- `GET/PATCH /api/jobs/jobs/<id>/` — Get/update job
 
-### Jobs & Applications
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/jobs/jobs/` | List jobs (supports `?q=`, `?job_type=`, `?location=`) |
-| `POST` | `/api/jobs/jobs/` | Create job posting (Recruiter) |
-| `GET/PATCH` | `/api/jobs/jobs/<id>/` | Get or update job |
-| `GET/POST` | `/api/jobs/companies/` | List or create companies |
-| `GET/POST` | `/api/jobs/applications/` | List or submit applications |
-| `PATCH` | `/api/jobs/applications/<id>/` | Update application status (Recruiter) |
+### Applications
+- `GET/POST /api/jobs/applications/` — List/submit applications
+- `PATCH /api/jobs/applications/<id>/` — Update application status
 
 ### Resumes
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/jobs/resume/upload/` | Upload and encrypt resume |
-| `GET` | `/api/jobs/resume/` | List own resumes |
-| `GET` | `/api/jobs/resume/<id>/download/` | Decrypt and download resume |
-| `DELETE` | `/api/jobs/resume/<id>/` | Delete resume |
+- `POST /api/jobs/resume/upload/` — Upload and encrypt resume
+- `GET /api/jobs/resume/<id>/download/` — Decrypt and download resume
+- `DELETE /api/jobs/resume/<id>/` — Delete resume
 
 ### Admin
+- `GET /api/auth/audit-logs/` — View hash-chained audit logs (Admin only)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/auth/audit-logs/` | Fetch hash-chained audit log (Admin only) |
+## Recent Fixes
+
+### CSRF Token Issues (April 2026)
+- **Problem**: POST/PATCH endpoints returning 403 "CSRF token missing or invalid"
+- **Root Cause**: Contradictory CSRF validation — middleware exempted JWT endpoints but authentication layer was re-validating
+- **Solution**: Removed duplicate CSRF enforcement; JWT auth doesn't need CSRF (stateless, not cookie-based)
+- **Commits**: 731e3f1, 9a198bf, 2a297be
+- **Status**: ✅ Fixed — All endpoints working without CSRF errors
+
+### Key Improvements
+- Clean, production-ready codebase
+- Middleware-based CSRF exemption for API endpoints
+- Simplified authentication flow
+- Better error handling in JWT validation
 
 ---
 
-## Milestone Progress
+## Troubleshooting
 
-| Milestone | Due | Status |
-|-----------|-----|--------|
-| Milestone 1 — HTTPS + skeleton app | Feb 13 | ✅ Complete |
-| Milestone 2 — Auth, OTP, profiles, resume upload | Feb 27 | ✅ Complete |
-| March Milestone — Jobs, messaging, applications, audit logs | Mar 31 | ✅ Complete |
-| April Milestone — Virtual keyboard, attack demos, final docs | Apr 30 | 🔄 In Progress |
+### Containers won't start
+```bash
+docker-compose logs backend  # Check backend logs
+docker-compose logs db       # Check database logs
+docker-compose ps            # Check service status
+```
 
----
+### Registration fails
+- Ensure phone number is unique
+- Check that TOTP app can scan QR code
+- Verify OTP code is correct (6 digits)
 
-## Team
-
-| Member | Role |
-|--------|------|
-| Member A | Authentication, profiles, privacy controls, TOTP flow |
-| Member B | RSA keypair system, E2EE messaging, resume signing |
+### Can't access frontend
+- Verify https://localhost is accessible
+- Accept SSL certificate warning
+- Check nginx logs: `docker-compose logs nginx`
 
 ---
 
 ## License
 
-This project is developed for academic purposes as part of CSE 345/545 at IIIT Delhi.
+Academic project developed for Foundations of Computer Security course at IIIT Delhi.
