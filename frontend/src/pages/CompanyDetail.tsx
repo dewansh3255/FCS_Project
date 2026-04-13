@@ -64,11 +64,13 @@ export default function CompanyDetail() {
   const handleSaveCompany = async () => {
     try {
       const endpoint = isSaved ? 'unsave' : 'save';
-      const response = await fetch(`${API_BASE_URL}/api/jobs/companies/${id}/${endpoint}/`, {
+      const response = await secureFetch(`${API_BASE_URL}/api/jobs/companies/${id}/${endpoint}/`, {
         method: isSaved ? 'DELETE' : 'POST',
-        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to update save status');
+      if (!response.ok) {
+        const errorMessage = await getErrorMessage(response);
+        throw new Error(errorMessage);
+      }
 
       setIsSaved(!isSaved);
       setMessage(isSaved ? 'Removed from saved' : 'Saved to your list!');
