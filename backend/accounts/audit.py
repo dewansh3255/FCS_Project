@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from django.db import transaction
 
 def create_audit_log(action: str, user, details: dict = None):
@@ -9,7 +9,7 @@ def create_audit_log(action: str, user, details: dict = None):
         last = AuditLog.objects.select_for_update().order_by('-id').first()
         prev_hash = last.current_hash if last else "0" * 64
         
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         payload = json.dumps({
             "action": action,
             "user": str(user),
