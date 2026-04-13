@@ -52,6 +52,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware', # CORS added
     'django.middleware.common.CommonMiddleware',
+    'core.middleware.CsrfExemptionMiddleware',  # CSRF exemption for specific paths (MUST be before CsrfViewMiddleware)
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'accounts.middleware.SessionActivityMiddleware',
