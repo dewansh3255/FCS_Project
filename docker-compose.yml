@@ -4,6 +4,7 @@ services:
   # 1. Database (PostgreSQL)
   db:
     image: postgres:15-alpine
+    restart: always # <-- ADDED
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -11,7 +12,6 @@ services:
       - POSTGRES_USER=fcs_user
       - POSTGRES_PASSWORD=fcs_password
     ports:
-      # CHANGED: Mapped host port to 5433 to avoid conflict with local Postgres
       - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fcs_user -d fcs_project"]
@@ -22,19 +22,22 @@ services:
   # 2. Caching (Redis)
   redis:
     image: redis:7-alpine
+    restart: always # <-- ADDED
     ports:
       - "6379:6379"
 
   # 3. Backend (Django)
   backend:
     build: ./backend
-    # Command: Wait for DB -> Migrate -> Start Server
+    restart: always # <-- ADDED
     command: >
       sh -c "while ! nc -z db 5432; do sleep 1; done;
              python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app
+      - media_data:/app/media         # <-- I MOVED THEM HERE
+      - static_data:/app/staticfiles
     ports:
       - "8000:8000"
     depends_on:
@@ -50,7 +53,7 @@ services:
       - REDIS_HOST=redis
       - ALLOWED_HOSTS=*
       - SECRET_KEY=dev_secret_key_change_in_prod
-      - DEBUG=True
+      - DEBUG=False
       - EMAIL_HOST_USER=kdewansh16@gmail.com
       - EMAIL_HOST_PASSWORD=ocsapshsudhgbbxi
       - ADMIN_URL=portal-206-987-secure/
@@ -58,6 +61,7 @@ services:
   # 4. Frontend (React + Vite)
   frontend:
     build: ./frontend
+    restart: always # <-- ADDED
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -69,11 +73,14 @@ services:
 
   nginx:
     image: nginx:alpine
+    restart: always # <-- ADDED
     ports:
       - "443:443"
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      -   media_data:/app/media
+      -   static_data:/app/staticfiles
       - ./nginx/ssl:/etc/nginx/ssl
     depends_on:
       - backend
@@ -81,3 +88,5 @@ services:
 
 volumes:
   postgres_data:
+  media_data:
+  static_data:
